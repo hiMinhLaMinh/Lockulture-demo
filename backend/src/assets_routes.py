@@ -1,18 +1,4 @@
-"""Asset upload intake and submission pipeline routes.
-
-Covers:
-  POST   /assets                   — register upload slot, return signed upload URL
-  GET    /assets/{asset_id}/url    — issue signed read URL (60s) after ACL check
-  POST   /submissions              — intake: validate, create job, outbox
-  GET    /submissions/{id}         — get submission status
-  POST   /submissions/{id}/retry   — retry with same idempotency key
-
-Upload flow:
-  1. Client calls POST /assets → gets asset_id + signed upload URL
-  2. Client uploads JPEG/PNG to Storage via signed URL
-  3. Backend (or webhook) confirms upload → asset.state = "ready"
-  4. Client calls POST /submissions with asset_id
-"""
+"""Private image upload, signed reads, and submission HTTP routes."""
 import datetime
 import hashlib
 import hmac
@@ -21,14 +7,18 @@ import os
 import secrets
 from pathlib import Path
 from typing import Annotated, Literal
-from uuid import UUID, uuid4
+from urllib.parse import urljoin
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, File, Header, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .firebase import get_db, get_storage_bucket
-from .social.core import SocialError, digest, now, require, timestamp
+from .firebase import get_db
+from .image_upload import store_image
+from .platform_routes import Actor
+from .social.core import now, require, timestamp
+from .social.posts import visible_post
 
 router = APIRouter(prefix="/api/v1")
 CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
@@ -36,7 +26,6 @@ CONFIG = json.loads((CONTRACTS / "fixtures/config.json").read_text(encoding="utf
 
 MAX_BYTES = CONFIG["max_upload_bytes"]
 SIGNED_READ_EXPIRY_SECONDS = 60
-SIGNED_UPLOAD_EXPIRY_SECONDS = 300  # 5 min to upload
 _LOCAL_URL_KEY = secrets.token_bytes(32)
 
 
@@ -44,51 +33,23 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AssetInput(Input):
-    mime_type: Literal["image/jpeg", "image/png", "image/webp"]
-    byte_size: int = Field(ge=1, le=MAX_BYTES)
-    sha256: str = Field(min_length=64, max_length=64)
-    width: int = Field(ge=1, le=20_000)
-    height: int = Field(ge=1, le=20_000)
-
-
 class SubmissionInput(Input):
-    session_id: UUID | None = None
     asset_id: UUID
     mode: Literal["free", "mission"]
-    mission_id: UUID | None = None
+    mission_id: UUID | None
+    mission_version: int | None = Field(ge=1)
+    evaluation_session_id: UUID | None
+    expected_previous_submission_id: UUID | None
 
-
-def _actor(request: Request, authorization: Annotated[str | None, Header()] = None) -> str:
-    from .platform_routes import _resolve_fixture_actor
-    from firebase_admin import auth as firebase_auth
-    import hashlib
-
-    scheme, _, token = (authorization or "").partition(" ")
-    if not (scheme.lower() == "bearer" and token):
-        raise SocialError(401, "Authentication required")
-
-    env = os.getenv("ENV", "production")
-    if env in {"development", "test"} and os.getenv("LOCKULTURE_SOCIAL_FIXTURES") == "1":
-        if token.startswith("lockulture-dev-"):
-            return _resolve_fixture_actor(token)
-
-    db = get_db()
-    try:
-        decoded = firebase_auth.verify_id_token(token)
-    except Exception as exc:
-        raise SocialError(401, "Invalid or expired token") from exc
-    if not decoded.get("email_verified", False):
-        raise SocialError(401, "Email not verified")
-    firebase_uid = decoded["uid"]
-    id_key = hashlib.sha256(firebase_uid.encode()).hexdigest()
-    snap = db.collection("auth_identities").document(id_key).get()
-    if not snap.exists:
-        raise SocialError(401, "Authentication required")
-    return snap.to_dict()["user_id"]
-
-
-Actor = Annotated[str, Depends(_actor)]
+    @model_validator(mode="after")
+    def validate_context(self):
+        if (self.mode == "mission") != (self.mission_id is not None and self.mission_version is not None):
+            raise ValueError("Mission mode requires mission ID and version")
+        if self.mode == "free" and (self.mission_id is not None or self.mission_version is not None):
+            raise ValueError("Free mode cannot specify a mission")
+        if (self.evaluation_session_id is None) != (self.expected_previous_submission_id is None):
+            raise ValueError("Continuation requires both session and previous submission")
+        return self
 
 
 def _storage_type() -> str:
@@ -113,135 +74,32 @@ def _local_signature(asset_id: str, expires: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# POST /assets — register upload slot
+# Asset upload and signed reads
 # ---------------------------------------------------------------------------
 
 @router.post("/assets", operation_id="uploadAsset", status_code=201)
-def create_asset(body: AssetInput, actor: Actor, request: Request,
+def create_asset(actor: Actor, photo: Annotated[UploadFile, File()],
                  key: Annotated[UUID, Header(alias="Idempotency-Key")]):
-    db = get_db()
-    asset_id = str(uuid4())
-    # Prefix: discoveries/owner_id/asset_id.jpg
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[body.mime_type]
-    object_path = f"discoveries/{actor}/{asset_id}.{ext}"
+    data = photo.file.read(MAX_BYTES + 1)
+    require(len(data) <= MAX_BYTES, 413, "Asset exceeds maximum size")
+    local_path = _local_path if _storage_type() == "local" else None
+    return store_image(actor, str(key), data, CONFIG, local_path)
 
-    asset_doc = {
-        "schema_version": 1,
-        "id": asset_id,
-        "owner_id": actor,
-        "object_path": object_path,
-        "sha256": body.sha256,
-        "mime_type": body.mime_type,
-        "byte_size": body.byte_size,
-        "width": body.width,
-        "height": body.height,
-        "state": "pending",
-        "created_at": now(),
-    }
-
-    if _storage_type() == "local":
-        upload_url = (
-            f"{str(request.base_url).rstrip('/')}/api/v1/assets/{asset_id}/upload"
-        )
-    else:
-        bucket = get_storage_bucket()
-        blob = bucket.blob(object_path)
-        upload_url = blob.generate_signed_url(
-            expiration=datetime.timedelta(seconds=SIGNED_UPLOAD_EXPIRY_SECONDS),
-            method="PUT",
-            content_type=body.mime_type,
-            version="v4",
-        )
-
-    db.collection("assets").document(asset_id).set(asset_doc)
-    return {"asset_id": asset_id, "upload_url": upload_url}
-
-
-@router.put("/assets/{asset_id}/upload", include_in_schema=False)
-async def upload_local_asset(asset_id: UUID, actor: Actor, request: Request):
-    require(_storage_type() == "local", 404, "Asset not found")
-    db = get_db()
-    asset_ref = db.collection("assets").document(str(asset_id))
-    snapshot = asset_ref.get()
-    require(snapshot.exists, 404, "Asset not found")
-    asset = snapshot.to_dict()
-    require(asset["owner_id"] == actor, 404, "Asset not found")
-    require(asset.get("state") == "pending", 409, "Asset is not awaiting upload")
-
-    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    require(content_type == asset["mime_type"], 415, "Invalid asset content type")
-    body = bytearray()
-    async for chunk in request.stream():
-        body.extend(chunk)
-        require(len(body) <= MAX_BYTES, 413, "Asset exceeds maximum size")
-    require(len(body) == asset["byte_size"], 409, "Asset size mismatch")
-    require(hashlib.sha256(body).hexdigest() == asset["sha256"], 409, "Asset hash mismatch")
-
-    target = _local_path(asset["object_path"])
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{uuid4().hex}.tmp")
-    temporary.write_bytes(body)
-    temporary.replace(target)
-    asset_ref.update({"state": "ready"})
-    return Response(status_code=204)
-
-
-# ---------------------------------------------------------------------------
-# GET /assets/{asset_id}/url — signed read URL
-# ---------------------------------------------------------------------------
 
 @router.get("/assets/{asset_id}/url", operation_id="getAssetUrl")
 def get_asset_url(asset_id: UUID, actor: Actor, response: Response, request: Request,
                   post_id: UUID | None = None):
-    from .social.core import SocialRepository
-    db = get_db()
-    snap = db.collection("assets").document(str(asset_id)).get()
-    require(snap.exists, 404, "Asset not found")
-    asset = snap.to_dict()
-
+    asset = get_db().collection("assets").document(str(asset_id)).get().to_dict()
+    require(asset and asset["state"] in {"ready", "in_submission", "attached"}, 404, "Asset not found")
+    services = request.app.state.social
     if asset["owner_id"] != actor:
-        # Need a valid post context
         require(post_id is not None, 404, "Asset not found")
-        post_snap = db.collection("posts").document(str(post_id)).get()
-        require(post_snap.exists and not post_snap.to_dict().get("deleted_at"), 404, "Asset not found")
-        post = post_snap.to_dict()
-        require(post.get("asset_id") == str(asset_id), 404, "Asset not found")
-        # Minimal ACL: actor must appear in direct_user_ids or current group membership
-        direct = post.get("direct_user_ids", [])
-        if actor not in [post["author_id"]] + direct:
-            # Check group grants
-            group_grants = post.get("group_grants", {})
-            has_group_access = False
-            for group_id, snapshot_members in group_grants.items():
-                group_snap = db.collection("groups").document(group_id).get()
-                if group_snap.exists:
-                    group = group_snap.to_dict()
-                    if not group.get("deleted_at") and actor in group.get("members", {}):
-                        inc_id = group["members"][actor].get("incarnation_id")
-                        if inc_id in snapshot_members:
-                            has_group_access = True
-                            break
-            require(has_group_access, 404, "Asset not found")
-
-    require(asset.get("state") in ("ready", "attached"), 404, "Asset not ready")
-
+        post = services.repository.read(lambda tx: visible_post(tx, actor, str(post_id)))
+        require(post["asset_id"] == str(asset_id), 404, "Asset not found")
     expires_at = now() + datetime.timedelta(seconds=SIGNED_READ_EXPIRY_SECONDS)
-    if _storage_type() == "local":
-        expires = int(expires_at.timestamp())
-        signature = _local_signature(str(asset_id), expires)
-        url = (
-            f"{str(request.base_url).rstrip('/')}/api/v1/assets/{asset_id}/file"
-            f"?expires={expires}&signature={signature}"
-        )
-    else:
-        blob = get_storage_bucket().blob(asset["object_path"])
-        url = blob.generate_signed_url(
-            expiration=datetime.timedelta(seconds=SIGNED_READ_EXPIRY_SECONDS),
-            method="GET",
-            version="v4",
-        )
+    url = services.urls.issue(str(asset_id), expires_at)
     response.headers["Cache-Control"] = "no-store"
-    return {"url": url, "expires_at": timestamp(expires_at)}
+    return {"url": urljoin(str(request.base_url), url), "expires_at": timestamp(expires_at)}
 
 
 @router.get("/assets/{asset_id}/file", include_in_schema=False)
@@ -253,7 +111,7 @@ def get_local_asset(asset_id: UUID, expires: int, signature: str):
     snapshot = get_db().collection("assets").document(str(asset_id)).get()
     require(snapshot.exists, 404, "Asset not found")
     asset = snapshot.to_dict()
-    require(asset.get("state") in ("ready", "attached"), 404, "Asset not found")
+    require(asset.get("state") in ("ready", "in_submission", "attached"), 404, "Asset not found")
     path = _local_path(asset["object_path"])
     require(path.is_file(), 404, "Asset not found")
     return FileResponse(path, media_type=asset["mime_type"], headers={"Cache-Control": "no-store"})
@@ -273,48 +131,17 @@ def submit_photo(body: SubmissionInput, actor: Actor,
 
 @router.get("/submissions/{submission_id}", operation_id="getSubmission")
 def get_submission(submission_id: UUID, actor: Actor):
+    from .jobs import read, submission_dto
+
     db = get_db()
-    snap = db.collection("submissions").document(str(submission_id)).get()
-    require(snap.exists, 404, "Submission not found")
-    sub = snap.to_dict()
-    require(sub["owner_id"] == actor, 404, "Submission not found")
-    return _submission_dto(sub)
+    submission = read(db, "submissions", str(submission_id))
+    require(submission and submission["owner_id"] == actor, 404, "Submission not found")
+    return submission_dto(submission, read(db, "evaluation_sessions", submission["evaluation_session_id"]))
 
 
 @router.post("/submissions/{submission_id}/retry", operation_id="retrySubmission", status_code=202)
-def retry_submission(submission_id: UUID, actor: Actor,
+def retry_submission(submission_id: UUID, body: Input, actor: Actor,
                      key: Annotated[UUID, Header(alias="Idempotency-Key")]):
-    db = get_db()
-    snap = db.collection("submissions").document(str(submission_id)).get()
-    require(snap.exists, 404, "Submission not found")
-    sub = snap.to_dict()
-    require(sub["owner_id"] == actor, 404, "Submission not found")
-    require(sub["status"] in ("failed", "pending"), 409, "Submission already complete")
+    from .jobs import retry_submission as retry
 
-    # Re-enqueue via same job
-    job_id = sub.get("job_id")
-    if job_id:
-        from .jobs import reenqueue_job
-        reenqueue_job(job_id)
-
-    return _submission_dto(sub)
-
-
-def _submission_dto(sub: dict) -> dict:
-    return {
-        "id": sub["id"],
-        "status": sub["status"],
-        "verdict": sub.get("verdict"),
-        "discovery_id": sub.get("discovery_id"),
-        "knowledge": sub.get("knowledge"),
-        "error": sub.get("error"),
-        "created_at": _ts(sub.get("created_at")),
-    }
-
-
-def _ts(value) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime.datetime):
-        return timestamp(value)
-    return value
+    return retry(actor, str(submission_id), str(key))

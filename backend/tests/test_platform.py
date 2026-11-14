@@ -5,7 +5,6 @@ without requiring real Firebase. Emulator tests for real data are in
 test_firebase_emulator.py (to be run separately when Emulator is available).
 """
 import asyncio
-import os
 import sys
 
 if sys.platform == "win32":
@@ -25,10 +24,10 @@ def services():
     return load_fixture_services()
 
 
-@pytest.fixture(scope="module")
-def client(services):
-    os.environ["ENV"] = "test"
-    os.environ["LOCKULTURE_SOCIAL_FIXTURES"] = "1"
+@pytest.fixture
+def client(services, monkeypatch):
+    monkeypatch.setenv("ENV", "test")
+    monkeypatch.setenv("LOCKULTURE_SOCIAL_FIXTURES", "1")
     app = create_app(social=services)
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
@@ -108,8 +107,9 @@ def test_timeline_all_locked_without_progress(client):
     items = r.json()["items"]
     for item in items:
         assert item["fragment_goal"] == 3
-        assert "era_id" in item
-        assert "sort_order" in item
+        assert item["id"].startswith("ERA_")
+        assert item["status"] == "not_started"
+    assert r.json()["next_cursor"] is None
 
 
 def test_discoveries_returns_fixture_data(client):

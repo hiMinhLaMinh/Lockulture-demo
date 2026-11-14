@@ -6,10 +6,16 @@ import { Action } from '@/shared/components/action';
 import { Note, Surface, commonStyles as c } from '@/shared/components/surface';
 import { useCaptureStore } from '@/state/capture-store';
 import { useAppStore } from '@/state/app-store';
-import { services } from '@/services';
+import { mockCaptureService } from '@/services/mock/capture-service';
 import { env } from '@/config/env';
 import type { CaptureScenario } from '@/domain/models';
+import { ApiPreviewScreen } from './api-preview-screen';
+
 export default function PreviewScreen() {
+  return env.dataSource === 'api' ? <ApiPreviewScreen /> : <MockPreviewScreen />;
+}
+
+function MockPreviewScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const draft = useCaptureStore((s) => s.draft);
   const user = useAppStore((s) => s.mockUser);
@@ -37,7 +43,7 @@ export default function PreviewScreen() {
       const prior = useCaptureStore
         .getState()
         .records.find((r) => r.id === draft.id && r.ownerId === user?.id);
-      const result = prior ?? (await services.capture.evaluate(draft, controller.signal));
+      const result = prior ?? (await mockCaptureService.evaluate(draft, controller.signal));
       if (controller.signal.aborted || useAppStore.getState().mockUser?.id !== draft.ownerId)
         return;
       if (draft.mode === 'mission' && !prior) {

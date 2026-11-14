@@ -4,7 +4,7 @@ Idempotent: uses era ID as document key; updates if schema_version changes.
 Run with:
   GOOGLE_APPLICATION_CREDENTIALS=... FIREBASE_PROJECT_ID=... python scripts/seed_eras.py
 Or with Emulator:
-  FIREBASE_EMULATOR_HOST=localhost:8080 FIREBASE_PROJECT_ID=lockulture-dev python scripts/seed_eras.py
+  FIRESTORE_EMULATOR_HOST=localhost:8081 FIREBASE_PROJECT_ID=lockulture-dev python scripts/seed_eras.py
 """
 import json
 import sys

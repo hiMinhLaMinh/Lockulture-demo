@@ -17,5 +17,5 @@ export default function MainLayout() {
     );
   }
   if (env.dataSource === 'api' && !actor) return <Redirect href="/(auth)/login" />;
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack key={actor ?? 'mock'} screenOptions={{ headerShown: false }} />;
 }

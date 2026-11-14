@@ -28,3 +28,9 @@ export function currentActor() {
   const user = useFirebaseSession.getState().user;
   return fixture ?? (user?.emailVerified ? user.uid : null);
 }
+
+export function useActorId() {
+  const fixture = useFixtureSession((state) => state.actor);
+  const user = useFirebaseSession((state) => state.user);
+  return fixture ?? user?.uid ?? null;
+}

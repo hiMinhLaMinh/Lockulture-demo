@@ -1,3 +1,4 @@
+import os
 from uuid import uuid4
 
 import pytest
@@ -10,9 +11,27 @@ A, B, C, D = (f"00000000-0000-4000-8000-{n:012d}" for n in range(1, 5))
 G = "00000000-0000-4000-8000-000000000016"
 
 
-@pytest.fixture
-def services():
-    return load_fixture_services()
+@pytest.fixture(params=["memory", "firestore"])
+def services(request):
+    services = load_fixture_services()
+    if request.param == "memory":
+        return services
+    if not os.getenv("FIRESTORE_EMULATOR_HOST"):
+        pytest.skip("Requires Firestore Emulator")
+    from google.cloud.firestore import Client
+    from backend.src.firestore_repo import FirestoreRepository
+
+    repository = FirestoreRepository(Client(project=f"demo-social-{uuid4().hex[:16]}"))
+    tables = services.repository.read(lambda tx: tx.tables)
+
+    def seed(tx):
+        for collection, records in tables.items():
+            for key, row in records.items():
+                tx.put(collection, key, row)
+
+    repository.atomic(seed)
+    services.repository = repository
+    return services
 
 
 @pytest.fixture

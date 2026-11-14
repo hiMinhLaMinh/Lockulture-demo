@@ -76,12 +76,14 @@ class MemoryRepository:
 
 
 class SocialError(Exception):
-    def __init__(self, status: int, message: str, code: str | None = None):
+    def __init__(self, status: int, message: str, code: str | None = None, *, retry_after: int | None = None):
         self.status = status
+        self.retry_after = retry_after
         self.message = message
         self.code = code or {
             401: "unauthorized", 403: "forbidden", 404: "not_found",
             409: "conflict", 422: "validation_error", 503: "provider_failed",
+            413: "asset_invalid", 415: "asset_invalid", 429: "rate_limited",
         }[status]
 
 

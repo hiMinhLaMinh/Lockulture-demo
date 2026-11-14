@@ -13,11 +13,7 @@ Bắt đầu tại [docs/README.md](docs/README.md). Bộ tài liệu đã đư�
 - [Kế hoạch tích hợp](docs/integration/PLAN.md)
 - [Hướng dẫn chạy mobile](mobile/README.md)
 
-<<<<<<< HEAD
-Frontend React Native/Expo đã có Missions, Capture, Friends/Groups, chia sẻ chọn người nhận, cảm xúc/bình luận và leaderboard bằng mock local. Một số trang auth/chi tiết vẫn scaffold. Backend FastAPI đã có verification gọi Gemini từ main; các luồng khác còn mẫu, chưa Maps/auth/đồng bộ nhiều tài khoản. React Native chưa nối API này; xem docs/integration/UPSTREAM_MERGE.md.
-=======
-Frontend chính là React Native/Expo. Working tree hiện có luồng Firebase Auth email/password, API client gửi Firebase ID token và backend FastAPI có Firebase Admin/Firestore services cùng social API. Chưa có bằng chứng Emulator/staging cho toàn bộ nghiệp vụ; upload ảnh đang dùng local volume chỉ trong dev vì project hiện chưa có Storage bucket.
->>>>>>> ee57e4c (Khởi tạo tài khoản của firebase và cơ sở hạ tầngd dể kết nối tới firebase)
+Frontend chính là React Native/Expo. Xem [bàn giao giai đoạn B](docs/implementation/PHASE_B_HANDOFF.md) để chạy Firebase Emulator, cấu hình luồng chụp ảnh API và triển khai staging.
 
 ## Chạy scaffold hiện tại
 
@@ -38,7 +34,7 @@ npm ci
 npm run start:go
 ```
 
-Cần Node 24 LTS và Expo Go tương thích SDK 58 hoặc development build; web preview dùng `npm run web`. Bản frontend có camera live, Missions và đánh giá/thưởng Capture bằng mock; chưa nối AI thật hoặc hoàn thiện toàn bộ nghiệp vụ. Camera/GPS cần kiểm tra trên thiết bị thật; mock không chứng minh agent hoạt động thật.
+Cần Node 24 LTS và Expo Go tương thích SDK 58 hoặc development build; web preview dùng `npm run web`. API mode dùng camera và assessment fixture qua FastAPI. Mock mode phục vụ xem trước các luồng trên thiết bị. Nghiệm thu staging cần chạy riêng trên hai thiết bị.
 
 ## Cấu trúc hiện có
 
@@ -46,10 +42,12 @@ Cần Node 24 LTS và Expo Go tương thích SDK 58 hoặc development build; we
 Lockulture/
 ├── docs/                 # Đặc tả, luồng UI, kiến trúc và API
 ├── mobile/src/           # React Native/Expo, routes, features, services và mock
-├── legacy/flutter/       # Scaffold Flutter cũ để tham khảo
-├── backend/src/          # FastAPI, schemas và bốn vai trò agent mẫu
+├── backend/src/main.py   # FastAPI với GET /health
 ├── backend/Dockerfile
 ├── backend/requirements.txt
+├── contracts/            # OpenAPI, schema, ví dụ và acceptance
+├── firebase/             # Cấu hình và quy tắc truy cập Firebase
+├── scripts/              # Công cụ kiểm tra contract
 ├── compose.yaml
 └── .env.example
 ```

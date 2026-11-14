@@ -20,7 +20,7 @@ Nếu không dùng nvm, cài/chọn Node 24 bằng công cụ quản lý Node đ
 
 Backend local đọc `backend/.env` và `backend/service-account.json`; cả hai file đều bị Git bỏ qua. Có thể chạy bằng Docker Compose ở repo root hoặc chạy Uvicorn trong thư mục `backend`. Android Emulator dùng `http://10.0.2.2:8080/api/v1`; điện thoại thật cần thay bằng địa chỉ LAN của máy chạy backend. API tự lấy Firebase ID token, làm mới một lần khi nhận 401 và gửi lại cùng request.
 
-Project hiện chưa có Firebase Storage bucket. Vì vậy `STORAGE_TYPE=local` chỉ bật upload ảnh cho dev/test qua volume `uploads_data`; không dùng cấu hình này cho production/Cloud Run. Khi bật Storage, đặt `STORAGE_TYPE=firebase` và cấu hình bucket thật cùng IAM.
+Upload trong API mode gửi multipart tới FastAPI. Dev/test có thể dùng `STORAGE_TYPE=local`; staging dùng `STORAGE_TYPE=firebase` và bucket private. Xem [hướng dẫn bàn giao B](../docs/implementation/PHASE_B_HANDOFF.md) để cấu hình worker và môi trường.
 
 - Quét QR bằng **Expo Go tương thích SDK 58**; nếu Expo Go trên thiết bị chưa hỗ trợ SDK này, dùng development build.
 - `npm run web`: xem nhanh UI trên web.

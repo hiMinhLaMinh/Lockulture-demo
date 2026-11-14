@@ -2,11 +2,13 @@
 
 [Chỉ mục](README.md) · [Bàn giao Giai đoạn A](implementation/PHASE_A_HANDOFF.md)
 
-## Giai đoạn A trên branch `codex/phase-a-social`
+## Giai đoạn B trên `codex/phase-b-handoff`
 
-- FastAPI phục vụ bạn bè, lời mời, nhóm, feed, bài đăng, chia sẻ, reaction và bình luận qua HTTP v1. Kiểm quyền và lưu replay trong giao dịch in-memory. Ảnh demo cấp URL có thời hạn sau khi kiểm quyền.
-- Expo chế độ API có phiên dev A/B/C/D, Friends, Groups, Compose, Feed, Post Detail và tương tác qua HTTP. Bộ sưu tập, hồ sơ và leaderboard đọc dữ liệu seed từ backend. Chế độ mock vẫn dùng dữ liệu local cũ.
-- Fixture chỉ chạy khi bật trong môi trường dev/test. Hồ sơ, discovery, XP, Firebase Auth/Firestore/Storage thật, upload, mission và AI vẫn thuộc các giai đoạn sau. Xem lệnh chạy, endpoint và interface tại tài liệu bàn giao.
+- FastAPI dùng Firebase Auth và Firestore cho hồ sơ, social, timeline và giao dịch submission/XP. Upload multipart kiểm tra ảnh, chuẩn hóa JPEG và ghi vào Storage private trong cấu hình Firebase. Local dev có thể dùng thư mục ảnh riêng.
+- Expo API mode đợi bootstrap hồ sơ, tải ảnh từ camera, theo dõi submission và hiển thị kết quả, XP và mảnh từ server. Feed, bài viết và chia sẻ dùng API social.
+- Worker fixture được bật riêng cho dev/test và tài khoản nghiệm thu staging. Các route nội bộ xử lý dispatch, delivery, recovery và cleanup. Xem [bàn giao giai đoạn B](implementation/PHASE_B_HANDOFF.md).
+- Kiểm chứng local trên working tree của nhánh: 48 ca backend pass với Auth/Firestore/Storage Emulator, gồm suite social giai đoạn A trên Firestore. Contract validator, smoke `/health` ngoài container, TypeScript, lint và Expo export web/Android/iOS đều pass. Docker image và camera trên thiết bị chưa được kiểm.
+- Staging `lockulture-f9c7d` còn chờ xác nhận billing/IAM, bucket, deploy và nghiệm thu hai thiết bị. Chưa xác nhận cổng B.
 
 Các bảng bên dưới mô tả baseline UI mock và các luồng ngoài phạm vi social API.
 
@@ -20,13 +22,12 @@ Các bảng bên dưới mô tả baseline UI mock và các luồng ngoài phạ
 | UI chung | Page, Action, Surface, BottomNavigation, token màu | Giữ component; bổ sung trạng thái chờ/lỗi theo API |
 | State | Zustand và AsyncStorage | Hiện vừa giữ UI vừa làm kho nghiệp vụ mock |
 | Query | Có TanStack Query và provider | Chưa được áp dụng đồng nhất cho social/feed hiện tại |
-| Camera/ảnh | Expo Camera, ImageManipulator, FileSystem | Có ảnh thực từ camera; chưa có upload thật |
-| HTTP | `services/api/client.ts`: bearer tùy chọn, JSON, timeout mặc định 15 giây | Chưa refresh token, runtime DTO validation hoặc upload pipeline |
+| Camera/ảnh | Expo Camera, ImageManipulator, FileSystem | API mode gửi ảnh multipart qua FastAPI |
+| HTTP | `services/api/client.ts`: bearer tùy chọn, JSON, timeout mặc định 15 giây | Refresh Firebase ID token một lần khi nhận 401, có validation DTO ở social và capture |
 | Adapter | Interface exploration/feed/missions/capture | API adapter báo chưa tích hợp; không fallback mock âm thầm |
-| Cấu hình | `EXPO_PUBLIC_DATA_SOURCE`, `EXPO_PUBLIC_API_BASE_URL` | Chuyển env chưa thay được những màn hình đang gọi store trực tiếp |
-| Backend | FastAPI, Dockerfile, bốn module agent | Verification gọi Gemini; các luồng khác còn mẫu, chưa social/persistence thật |
-
-Thư mục tham chiếu: `mobile/src/app`, `features`, `domain`, `services`, `state`, `shared`; Flutter cũ lưu trong `legacy/flutter`.
+| Cấu hình | `EXPO_PUBLIC_DATA_SOURCE`, `EXPO_PUBLIC_API_BASE_URL` | API mode dùng Firebase cho Auth và FastAPI cho nghiệp vụ |
+| Backend | FastAPI và Dockerfile. Có `GET /health` và social API dưới `/api/v1` với fixture dev/test. | Backend kiểm quyền, validation và idempotency. Firebase Auth, Firestore và Storage thật thuộc Giai đoạn B. |
+Thư mục tham chiếu: `mobile/src/app`, `features`, `domain`, `services`, `state`, `shared`.
 
 ## Màn hình và luồng
 
@@ -70,16 +71,4 @@ Draft capture và continuation không phải toàn bộ đều được persist;
 
 ## Bộ đầu vào triển khai mới (11/11/2026)
 
-<<<<<<< HEAD
-Thiết kế mới dùng Firebase Auth/Firestore/Cloud Storage; xem [implementation](implementation/README.md). Runtime frontend/backend chưa chuyển provider trong đợt cập nhật tài liệu. Tests SQL cũ được lưu lịch sử, chưa có bằng chứng Emulator/staging Firebase pass.
-=======
-Thiết kế mới dùng Firebase Auth/Firestore/Cloud Storage; xem [implementation](implementation/README.md). Trạng thái runtime hiện tại bên dưới là cấu hình local chưa có bằng chứng Emulator/staging.
-
-## Cập nhật tích hợp Firebase local
-
-- Mobile API mode có đăng ký/đăng nhập Email/Password, xác minh email, đặt lại mật khẩu, persistence native, sign-out và tự gửi Firebase ID token tới FastAPI; cấu hình công khai lấy từ `mobile/.env`.
-- Backend khởi tạo Firebase Admin từ `FIREBASE_PROJECT_ID` và credentials, tạo `auth_identities`/`profiles` khi gọi `GET /api/v1/me`, xác minh ID token và dùng Firestore repository cho social API. Route Firebase `/me` được ưu tiên khi không chạy fixture.
-- Compose mount `backend/service-account.json` chỉ đọc; Docker build loại file khóa và `.env`. Hai file không được commit.
-- Project hiện chưa có Storage bucket. Upload local dùng volume `uploads_data`, chỉ cho development/test; không phù hợp production/Cloud Run.
-- Đã kiểm tra typecheck/lint, web export và backend tests (26 passed, 5 Emulator tests skipped); contract validator pass. Local API smoke test trả `200` cho `/health`, `401` khi gọi `/api/v1/me` không có token. Firebase Admin đọc được Firestore bằng credential cấu hình; truy vấn root collections hiện trả 0. Chưa xác thực login thật hoặc ghi dữ liệu nghiệp vụ lên project; Docker CLI không có trong máy kiểm tra. Python cục bộ là 3.10, trong khi Firebase SDK cảnh báo nên dùng Python 3.11+.
->>>>>>> ee57e4c (Khởi tạo tài khoản của firebase và cơ sở hạ tầngd dể kết nối tới firebase)
+Thiết kế mới dùng Firebase Auth/Firestore/Cloud Storage; xem [implementation](implementation/README.md). Trạng thái kiểm chứng giai đoạn B được ghi ở đầu trang.

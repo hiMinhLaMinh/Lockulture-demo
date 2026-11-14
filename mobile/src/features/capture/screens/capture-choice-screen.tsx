@@ -5,8 +5,15 @@ import { useAppStore } from '@/state/app-store';
 import { Surface, Note, commonStyles as c } from '@/shared/components/surface';
 import { Action } from '@/shared/components/action';
 import { colors } from '@/shared/theme/tokens';
+import { env } from '@/config/env';
+import { useActorId } from '@/features/social/api/session';
+import { useCaptureStore } from '@/state/capture-store';
+
 export default function CaptureChoiceScreen() {
   const mission = useAppStore((s) => s.activeMission);
+  const actor = useActorId();
+  const draft = useCaptureStore((s) => s.draft);
+  const api = env.dataSource === 'api';
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -20,6 +27,13 @@ export default function CaptureChoiceScreen() {
           Máy ảnh
         </Text>
         <Text style={c.body}>Một bức ảnh, một câu chuyện để khám phá.</Text>
+        {api && draft?.ownerId === actor && draft ? (
+          <Action
+            secondary
+            label="Tiếp tục ảnh đang xử lý"
+            href={{ pathname: '/(main)/capture/preview', params: { id: draft.id } }}
+          />
+        ) : null}
         <Surface>
           <View style={c.row}>
             <Ionicons name="camera-outline" size={28} color={colors.accent} />
@@ -35,36 +49,40 @@ export default function CaptureChoiceScreen() {
             href={{ pathname: '/(main)/capture/camera', params: { mode: 'free' } }}
           />
         </Surface>
-        <Surface>
-          <Text style={c.title}>{mission ? 'Nhiệm vụ đang khám phá' : 'Khám phá có mục tiêu'}</Text>
-          <Text style={c.body}>
-            {mission
-              ? `${mission.eraName}. Chụp theo yêu cầu để hoàn thành nhiệm vụ.`
-              : 'Nhận mật thư và tìm một địa điểm để nhận thêm XP.'}
-          </Text>
-          {mission ? (
-            <>
+        {!api ? (
+          <Surface>
+            <Text style={c.title}>
+              {mission ? 'Nhiệm vụ đang khám phá' : 'Khám phá có mục tiêu'}
+            </Text>
+            <Text style={c.body}>
+              {mission
+                ? `${mission.eraName}. Chụp theo yêu cầu để hoàn thành nhiệm vụ.`
+                : 'Nhận mật thư và tìm một địa điểm để nhận thêm XP.'}
+            </Text>
+            {mission ? (
+              <>
+                <Action
+                  label="Chụp cho nhiệm vụ"
+                  href={{
+                    pathname: '/(main)/capture/camera',
+                    params: { mode: 'mission', missionId: mission.id },
+                  }}
+                />
+                <Action
+                  secondary
+                  label="Xem nhiệm vụ"
+                  href={{ pathname: '/(main)/missions/[id]', params: { id: mission.id } }}
+                />
+              </>
+            ) : (
               <Action
-                label="Chụp cho nhiệm vụ"
-                href={{
-                  pathname: '/(main)/capture/camera',
-                  params: { mode: 'mission', missionId: mission.id },
-                }}
+                textColor="#000000"
+                label="Tìm nhiệm vụ quanh đây"
+                href="/(main)/missions/search"
               />
-              <Action
-                secondary
-                label="Xem nhiệm vụ"
-                href={{ pathname: '/(main)/missions/[id]', params: { id: mission.id } }}
-              />
-            </>
-          ) : (
-            <Action
-              textColor="#000000"
-              label="Tìm nhiệm vụ quanh đây"
-              href="/(main)/missions/search"
-            />
-          )}
-        </Surface>
+            )}
+          </Surface>
+        ) : null}
         <Note>Chỉ xin quyền camera khi bạn mở màn hình chụp.</Note>
       </ScrollView>
     </SafeAreaView>

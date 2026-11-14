@@ -13,29 +13,37 @@ import { useAppStore } from '@/state/app-store';
 import { EraTimeline } from '@/features/exploration/components/era-timeline';
 import { EraDetail } from '@/features/exploration/components/era-detail';
 
+import { env } from '@/config/env';
+import { useActorId } from '@/features/social/api/session';
 export default function ExploreScreen() {
-  const activeMission = useAppStore((s) => s.activeMission);
+  const mockMission = useAppStore((s) => s.activeMission);
+  const activeMission = env.dataSource === 'mock' ? mockMission : null;
   const selected = useAppStore((s) => s.selectedEraId);
   const selectEra = useAppStore((s) => s.selectEra);
   const user = useAppStore((s) => s.mockUser);
+  const actor = useActorId();
   const {
     data: baseEras,
     isPending,
     error,
     refetch,
-  } = useQuery({ queryKey: ['timeline'], queryFn: services.exploration.listEras });
+  } = useQuery({ queryKey: ['timeline', actor], queryFn: services.exploration.listEras });
   const records = useCaptureStore((s) => s.records);
-  const eras = baseEras?.map((era): Era => {
-    const count = Math.min(
-      era.fragmentGoal,
-      records.filter((r) => r.ownerId === user?.id && r.fragmentAdded && r.eraId === era.id).length,
-    );
-    return {
-      ...era,
-      fragmentCount: count,
-      status: count >= era.fragmentGoal ? 'decoded' : count ? 'in_progress' : 'not_started',
-    };
-  });
+  const eras =
+    env.dataSource === 'api'
+      ? baseEras
+      : baseEras?.map((era): Era => {
+          const count = Math.min(
+            era.fragmentGoal,
+            records.filter((r) => r.ownerId === user?.id && r.fragmentAdded && r.eraId === era.id)
+              .length,
+          );
+          return {
+            ...era,
+            fragmentCount: count,
+            status: count >= era.fragmentGoal ? 'decoded' : count ? 'in_progress' : 'not_started',
+          };
+        });
   const era = eras?.find((item) => item.id === selected) ?? eras?.[0];
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>

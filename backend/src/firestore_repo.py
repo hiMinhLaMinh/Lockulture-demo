@@ -7,9 +7,11 @@ Key design notes (from DATA_TRANSACTIONS.md):
 - atomic() uses db.transaction() with retry; raises SocialError(503) on exhaustion.
 """
 import datetime
-import json
+import os
 from typing import Callable, TypeVar
 
+import google.auth
+from google.auth.transport.requests import Request
 from google.cloud import firestore as fs
 from google.cloud.storage import Blob
 
@@ -109,7 +111,6 @@ class _FirestoreTx:
         row.setdefault("schema_version", 1)
         if collection == "users":
             row["xp_total"] = row.pop("xp", 0)
-            row.pop("created_at", None)
         elif collection == "pairs":
             row["pending_request_id"] = row.pop("request_id", None)
         elif collection == "groups":
@@ -210,50 +211,34 @@ class FirestoreRepository:
     def read(self, operation: Callable[[SocialTransaction], T]) -> T:
         """Read-only: runs operation inside a snapshot read for consistency."""
         db = self._client()
-        tx = db.transaction(read_only=True)
-        fs_tx = _FirestoreTx(db, tx)
-        # Firestore read-only transactions don't use begin/commit the same way,
-        # so we just open a transaction context.
+        @fs.transactional
+        def run(tx):
+            return operation(_FirestoreTx(db, tx))
+
         try:
-            with tx:
-                result = operation(fs_tx)
+            return run(db.transaction(read_only=True))
         except SocialError:
             raise
         except Exception as exc:
             raise SocialError(503, "Storage error") from exc
-        return result
 
     def atomic(self, operation: Callable[[SocialTransaction], T]) -> T:
         """Read-then-write in a Firestore transaction with contention retry."""
         db = self._client()
-        # Use @db.transaction decorator idiom
-        result_holder = [None]
 
-        @db.transaction(max_attempts=5)
+        @fs.transactional
         def run(tx):
             fs_tx = _FirestoreTx(db, tx)
-            try:
-                result = operation(fs_tx)
-            except SocialError as exc:
-                if exc.status == 409:
-                    # Store conflict result; don't flush writes
-                    result_holder[0] = exc
-                    return
-                raise
+            result = operation(fs_tx)
             fs_tx.flush()
-            result_holder[0] = result
+            return result
 
         try:
-            run()
+            return run(db.transaction(max_attempts=5))
         except SocialError:
             raise
         except Exception as exc:
             raise SocialError(503, "Transaction failed; please retry") from exc
-
-        held = result_holder[0]
-        if isinstance(held, SocialError):
-            raise held
-        return held
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +296,7 @@ class FirestoreDiscoveryReader:
     def _discovery_dto(record: dict | None) -> dict | None:
         if record is None:
             return None
-        row = dict(record)
+        row = {key: value for key, value in record.items() if key != "schema_version"}
         row.setdefault("name", row.get("subject_name") or row.get("subject_key", "Khám phá"))
         if row.get("reward_reason") == "valid":
             row["reward_reason"] = "granted"
@@ -324,8 +309,6 @@ class FirestoreDiscoveryReader:
 
 class StorageUrlIssuer:
     """Issues 60-second signed read URLs for private Storage objects."""
-
-    EXPIRY_SECONDS = 60
 
     def __init__(self, bucket=None):
         self._bucket = bucket  # injected or lazily loaded
@@ -343,7 +326,7 @@ class StorageUrlIssuer:
         if not snap.exists:
             raise SocialError(404, "Asset not found")
         asset = snap.to_dict()
-        if asset.get("state") not in ("ready", "attached"):
+        if asset.get("state") not in ("ready", "in_submission", "attached"):
             raise SocialError(404, "Asset not ready")
 
         if os.getenv("STORAGE_TYPE", "firebase").strip().lower() == "local":
@@ -355,10 +338,17 @@ class StorageUrlIssuer:
             return f"/api/v1/assets/{asset_id}/file?expires={expires}&signature={signature}"
 
         blob: Blob = self._get_bucket().blob(asset["object_path"])
+        signing_email = os.getenv("STORAGE_SIGNING_SERVICE_ACCOUNT")
+        signing = {}
+        if signing_email:
+            credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            credentials.refresh(Request())
+            signing = {"service_account_email": signing_email, "access_token": credentials.token}
         url = blob.generate_signed_url(
-            expiration=datetime.timedelta(seconds=self.EXPIRY_SECONDS),
+            expiration=expires_at,
             method="GET",
             version="v4",
+            **signing,
         )
         return url
 

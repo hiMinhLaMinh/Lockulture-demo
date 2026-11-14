@@ -1,204 +1,147 @@
-"""Award transaction: grant XP, fragment, and create discovery from AI result.
-
-Implements DATA_TRANSACTIONS.md "Award" transaction:
-  - Lock on owner via profile document
-  - Check reward_ledger for idempotency (no double XP)
-  - Create discovery document
-  - Update era_progress (fragment cap=3, unique subject/era)
-  - Update profile.xp_total
-  - Close submission + job atomically
-"""
-import datetime
+"""Persist an assessment and all of its effects under the current worker lease."""
 import json
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
+
+from google.cloud.firestore import transactional
+from jsonschema import Draft202012Validator
 
 from .firebase import get_db
-from .social.core import SocialError, digest, now, timestamp
+from .jobs import CONFIG, active_mission, read, write
+from .social.core import SocialError, digest, normalized, now, timestamp
 
-CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
-CONFIG = json.loads((CONTRACTS / "fixtures/config.json").read_text(encoding="utf-8"))
-FREE_XP = CONFIG["free_xp"]           # 20
-MISSION_XP = CONFIG["mission_xp"]     # 100
-MAX_FRAGMENTS = 3
-
-
-def _vn_date_key(dt: datetime.datetime) -> str:
-    """Vietnam date string for daily XP gate (Asia/Ho_Chi_Minh = UTC+7)."""
-    vn = dt + datetime.timedelta(hours=7)
-    return vn.strftime("%Y-%m-%d")
+SCHEMAS = {
+    mode: Draft202012Validator(json.loads(
+        (Path(__file__).resolve().parents[2] / f"contracts/ai/{mode}-assessment.schema.json").read_text()
+    )) for mode in ("free", "mission")
+}
 
 
-def award_result(submission_id: str, job_id: str, ai_result: dict) -> None:
-    """Atomic award transaction. Idempotent — safe to call twice with same job_id."""
+def error_detail(code, message, retryable=False):
+    return {"code": code, "message": message, "retryable": retryable, "request_id": str(uuid4())}
+
+
+def finish_failure(db, tx, job, code, message, retryable=False):
+    write(db, tx, "jobs", job["id"], {"status": "failed", "stage": "done", "lease_token": None,
+                                     "lease_until": None}, merge=True)
+    write(db, tx, "submissions", job["submission_id"], {
+        "status": "failed", "error": error_detail(code, message, retryable),
+    }, merge=True)
+
+
+def award_result(job_id: str, lease_token: str, assessment: dict) -> bool:
+    """Return whether the current lease committed a result."""
     db = get_db()
-    verdict = ai_result.get("verdict", "no_result")
 
-    # Fetch submission outside transaction for owner
-    sub_snap = db.collection("submissions").document(submission_id).get()
-    if not sub_snap.exists:
-        raise SocialError(404, "Submission not found")
-    sub = sub_snap.to_dict()
-    owner_id = sub["owner_id"]
-    mode = sub["mode"]
-    mission_id = sub.get("mission_id")
-    asset_id = sub.get("asset_id")
-    created_at = sub.get("created_at")
-    if isinstance(created_at, str):
-        created_at = datetime.datetime.fromisoformat(created_at)
-
-    if verdict in ("invalid", "no_result"):
-        # No reward — just close the submission
-        _close_submission_no_reward(db, submission_id, job_id, verdict, ai_result)
-        return
-
-    subject_key = ai_result.get("subject_key")
-    era_id = ai_result.get("era_id")
-    knowledge = ai_result.get("knowledge", "")
-
-    @db.transaction(max_attempts=5)
+    @transactional
     def run(tx):
-        current_time = now()
-
-        # --- Profile (lock + read xp_total) ---
-        profile_ref = db.collection("profiles").document(owner_id)
-        profile_snap = profile_ref.get(transaction=tx)
-        if not profile_snap.exists:
-            raise SocialError(404, "Profile not found")
-        profile = profile_snap.to_dict()
-
-        # --- Idempotency: check if job already awarded ---
-        job_ref = db.collection("jobs").document(job_id)
-        job_snap = job_ref.get(transaction=tx)
-        if job_snap.exists and job_snap.to_dict().get("status") == "complete":
-            return  # Already awarded, no-op
-
-        # --- XP calculation ---
-        xp_to_grant = 0
-        reward_reason = "valid"
+        time = now()
+        job = read(db, "jobs", job_id, tx)
+        if not (job and job["status"] == "running" and job["lease_token"] == lease_token
+                and job["lease_until"] > time and job["deadline"] > time):
+            return False
+        sub = read(db, "submissions", job["submission_id"], tx)
+        session_id = sub["evaluation_session_id"]
+        session = read(db, "evaluation_sessions", session_id, tx)
+        if session["expires_at"] <= time or session["last_submission_id"] != sub["id"]:
+            if session["expires_at"] <= time:
+                write(db, tx, "evaluation_sessions", session_id, {"status": "expired"}, merge=True)
+            finish_failure(db, tx, job, "session_closed", "Evaluation session has expired or changed")
+            return False
+        owner = sub["owner_id"]
+        mode = sub["mode"]
+        SCHEMAS[mode].validate(assessment)
+        mission = None
         if mode == "mission":
-            # Mission: 100 XP, one-time only (checked via ledger)
-            reward_key = f"mission:{mission_id}"
+            try:
+                mission = active_mission(db, tx, owner, sub["mission_id"], sub["mission_version"])
+            except SocialError:
+                finish_failure(db, tx, job, "mission_inactive", "Mission is no longer active")
+                return False
+        verdict = assessment["verdict"]
+        discovery = None
+        if verdict in {"accepted", "completed"}:
+            discovery = grant_discovery(db, tx, sub, mission, assessment, time)
+            status = "completed"
+        elif verdict in {"retake_required", "unidentified"} and session["evidence_count"] < CONFIG["max_evidence_images"]:
+            status = "awaiting_evidence"
         else:
-            # Free: 20 XP, once per subject_key per VN day
-            vn_day = _vn_date_key(created_at)
-            reward_key = f"free:{subject_key}:{vn_day}"
+            status = "closed"
+        instruction = assessment["instruction"]
+        if status == "closed" and verdict in {"retake_required", "unidentified"}:
+            instruction = "Phiên đã đủ bốn ảnh. Hãy bắt đầu phiên mới."
+        write(db, tx, "evaluation_sessions", session_id, {"status": status}, merge=True)
+        write(db, tx, "submissions", sub["id"], {
+            "status": "succeeded", "verdict": verdict, "name": assessment["name"],
+            "knowledge": assessment["knowledge"], "instruction": instruction, "discovery": discovery,
+            "error": None,
+        }, merge=True)
+        write(db, tx, "jobs", job_id, {"status": "succeeded", "stage": "done", "completed_at": time,
+                                      "lease_token": None, "lease_until": None}, merge=True)
+        return True
 
-        ledger_key = digest([owner_id, reward_key])
-        ledger_ref = db.collection("reward_ledger").document(ledger_key)
-        ledger_snap = ledger_ref.get(transaction=tx)
-
-        if ledger_snap.exists:
-            # Already rewarded
-            reward_reason = "daily_subject_limit" if mode == "free" else "mission_already_complete"
-            xp_to_grant = 0
-        else:
-            xp_to_grant = MISSION_XP if mode == "mission" else FREE_XP
-
-        # --- Fragment calculation ---
-        fragment_added = False
-        era_progress_key = digest([owner_id, era_id]) if era_id else None
-        era_progress_ref = None
-        era_progress = None
-
-        if era_id and subject_key:
-            era_progress_ref = db.collection("era_progress").document(era_progress_key)
-            era_snap = era_progress_ref.get(transaction=tx)
-            if era_snap.exists:
-                era_progress = era_snap.to_dict()
-            else:
-                era_progress = {
-                    "schema_version": 1,
-                    "owner_id": owner_id,
-                    "era_id": era_id,
-                    "subject_keys": [],
-                    "fragment_count": 0,
-                    "discovery_ids": [],
-                }
-
-            existing_subjects = era_progress.get("subject_keys", [])
-            fragment_count = era_progress.get("fragment_count", 0)
-            if subject_key not in existing_subjects and fragment_count < MAX_FRAGMENTS:
-                fragment_added = True
-
-        # --- Create discovery ---
-        discovery_id = str(uuid4())
-        discovery = {
-            "schema_version": 1,
-            "id": discovery_id,
-            "owner_id": owner_id,
-            "submission_id": submission_id,
-            "asset_id": asset_id,
-            "mission_id": mission_id,
-            "mode": mode,
-            "subject_key": subject_key,
-            "era_id": era_id,
-            "knowledge": knowledge,
-            "xp_awarded": xp_to_grant,
-            "reward_reason": reward_reason,
-            "fragment_added": fragment_added,
-            "created_at": current_time,
-        }
-
-        # --- Writes ---
-        discovery_ref = db.collection("discoveries").document(discovery_id)
-        tx.set(discovery_ref, discovery)
-
-        # Update submission
-        sub_ref = db.collection("submissions").document(submission_id)
-        tx.update(sub_ref, {
-            "status": "complete",
-            "verdict": "valid",
-            "knowledge": knowledge,
-            "discovery_id": discovery_id,
-        })
-
-        # Close job
-        tx.update(job_ref, {"status": "complete", "completed_at": current_time})
-
-        # Mark asset as attached
-        asset_ref = db.collection("assets").document(asset_id)
-        tx.update(asset_ref, {"state": "attached"})
-
-        # Reward ledger + XP
-        if xp_to_grant > 0 and not ledger_snap.exists:
-            tx.set(ledger_ref, {
-                "schema_version": 1,
-                "discovery_id": discovery_id,
-                "xp": xp_to_grant,
-                "created_at": current_time,
-            })
-            tx.update(profile_ref, {"xp_total": profile["xp_total"] + xp_to_grant})
-
-        # Era progress fragment
-        if fragment_added and era_progress_ref is not None and era_progress is not None:
-            new_subjects = era_progress["subject_keys"] + [subject_key]
-            new_count = era_progress["fragment_count"] + 1
-            new_ids = era_progress.get("discovery_ids", []) + [discovery_id]
-            tx.set(era_progress_ref, {
-                **era_progress,
-                "subject_keys": new_subjects,
-                "fragment_count": new_count,
-                "discovery_ids": new_ids,
-            })
-
-        # Mission completion
-        if mode == "mission" and mission_id and not ledger_snap.exists:
-            mission_ref = db.collection("missions").document(mission_id)
-            tx.update(mission_ref, {"status": "complete", "completed_at": current_time})
-            tx.update(profile_ref, {"active_mission_id": None})
-
-    run()
+    return run(db.transaction())
 
 
-def _close_submission_no_reward(db, submission_id: str, job_id: str,
-                                 verdict: str, ai_result: dict) -> None:
-    """Close submission without any reward for invalid/no_result verdicts."""
-    updates = {
-        "status": "complete",
-        "verdict": verdict,
-        "knowledge": ai_result.get("knowledge"),
-        "instruction": ai_result.get("instruction"),
+def grant_discovery(db, tx, sub, mission, assessment, time):
+    owner = sub["owner_id"]
+    discovery_id = sub["id"]
+    era_id = assessment["era_id"]
+    mission_id = sub["mission_id"]
+    if mission:
+        subject = f"place:{mission['place_id']}"
+        reward_key = f"mission:{mission_id}"
+        xp = CONFIG["mission_xp"]
+        if era_id != mission["era_id"]:
+            raise ValueError("Assessment era must match the active mission")
+    else:
+        name = " ".join(normalized(assessment["canonical_name"]).split())
+        subject = f"{assessment['category']}:{name}"
+        if assessment["category"] == "street_sign":
+            subject += ":" + " ".join(normalized(assessment["locality"]).split())
+        day = sub["created_at"].astimezone(ZoneInfo(CONFIG["reward_timezone"])).date()
+        reward_key = f"free:{subject}:{day}"
+        xp = CONFIG["free_xp"]
+
+    existing = read(db, "discoveries", discovery_id, tx)
+    if existing:
+        return {key: timestamp(value) if key == "created_at" else value
+                for key, value in existing.items() if key != "schema_version"}
+    profile = read(db, "profiles", owner, tx)
+    ledger_id = digest([owner, reward_key])
+    ledger = read(db, "reward_ledger", ledger_id, tx)
+    progress_id = digest([owner, era_id])
+    progress = (read(db, "era_progress", progress_id, tx) or {}) if era_id else {}
+    subjects = progress.get("subject_keys", [])
+    fragment = bool(era_id and subject not in subjects and len(subjects) < CONFIG["fragment_goal"])
+    if ledger and mission:
+        raise ValueError("Mission reward already exists")
+    if ledger:
+        xp = 0
+    result = {
+        "id": discovery_id, "owner_id": owner, "submission_id": sub["id"], "asset_id": sub["asset_id"],
+        "mode": sub["mode"], "mission_id": mission_id, "subject_key": subject, "era_id": era_id,
+        "name": assessment["name"], "knowledge": assessment["knowledge"],
+        "xp_awarded": xp, "reward_reason": "granted" if xp else "daily_subject_limit",
+        "fragment_added": fragment, "created_at": timestamp(time),
     }
-    db.collection("submissions").document(submission_id).update(updates)
-    db.collection("jobs").document(job_id).update({"status": "complete"})
+    write(db, tx, "discoveries", discovery_id, {**result, "created_at": time, "schema_version": 1})
+    write(db, tx, "assets", sub["asset_id"], {"state": "attached"}, merge=True)
+    profile_updates = {}
+    if xp:
+        write(db, tx, "reward_ledger", ledger_id, {
+            "schema_version": 1, "owner_id": owner, "discovery_id": discovery_id, "xp": xp, "created_at": time,
+        })
+        profile_updates["xp_total"] = profile.get("xp_total", 0) + xp
+    if fragment:
+        write(db, tx, "era_progress", progress_id, {
+            "schema_version": 1, "owner_id": owner, "era_id": era_id, "subject_keys": [*subjects, subject],
+            "fragment_count": len(subjects) + 1, "discovery_ids": [*progress.get("discovery_ids", []), discovery_id],
+        })
+    if mission:
+        write(db, tx, "missions", mission_id, {"status": "completed", "completed_at": time}, merge=True)
+        profile_updates["active_mission_id"] = None
+    if profile_updates:
+        write(db, tx, "profiles", owner, profile_updates, merge=True)
+    return result

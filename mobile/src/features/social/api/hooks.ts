@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
+import { newKey } from '@/services/api/idempotency';
 import { ApiError } from '@/services/api/client';
 import { pageSchema, socialRequest } from '@/services/api/social';
 import { currentActor, tokenFor, useFirebaseSession, useFixtureSession } from './session';
@@ -21,7 +22,7 @@ export function useSocialQuery<T>(path: string, schema: z.ZodType<T>, enabled = 
   const { actor, token } = useActor();
   return useQuery({
     queryKey: ['social', actor, path],
-    queryFn: ({ signal }) => socialRequest(token, path, schema, { signal }),
+    queryFn: ({ signal }) => socialRequest(token, path, schema, { signal }, actor),
     enabled: !!actor && enabled,
     retry,
     gcTime: path.startsWith('/assets/') ? 0 : undefined,
@@ -41,6 +42,7 @@ export function useSocialPage<T>(path: string, item: z.ZodType<T>, enabled = tru
           : path,
         pageSchema(item),
         { signal },
+        actor,
       ),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
     enabled: !!actor && enabled,
@@ -54,15 +56,6 @@ export function useRefreshOnFocus(refetch: () => Promise<unknown>) {
       if (currentActor()) void refetch();
     }, [refetch]),
   );
-}
-
-function newKey() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  // The key correlates retries. It is neither a credential nor a security token.
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
-    const nibble = Math.floor(Math.random() * 16);
-    return (character === 'x' ? nibble : (nibble & 3) | 8).toString(16);
-  });
 }
 
 type Command<T> = {
@@ -85,11 +78,17 @@ export function useSocialMutation() {
       const key = pending.current.get(fingerprint) ?? newKey();
       pending.current.set(fingerprint, key);
       try {
-        const result = await socialRequest(token, command.path, command.schema, {
-          method: command.method,
-          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
-          body: command.body === undefined ? undefined : JSON.stringify(command.body),
-        });
+        const result = await socialRequest(
+          token,
+          command.path,
+          command.schema,
+          {
+            method: command.method,
+            headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+            body: command.body === undefined ? undefined : JSON.stringify(command.body),
+          },
+          actor,
+        );
         pending.current.delete(fingerprint);
         return result;
       } catch (error) {

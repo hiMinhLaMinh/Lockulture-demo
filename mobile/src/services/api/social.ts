@@ -87,6 +87,7 @@ export async function socialRequest<T>(
   path: string,
   schema: z.ZodType<T>,
   options?: RequestInit,
+  actor?: string | null,
 ): Promise<T> {
-  return schema.parse(await requestJson<unknown>(path, options, token));
+  return schema.parse(await requestJson<unknown>(path, options, token, actor));
 }

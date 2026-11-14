@@ -12,6 +12,7 @@ from .social.http import router
 from .firestore_repo import load_firebase_social_services
 from .platform_routes import router as platform_router
 from .assets_routes import router as assets_router
+from .worker.http import router as worker_router
 
 
 def create_app(*, social=None):
@@ -38,15 +39,15 @@ def create_app(*, social=None):
     def legacy_health():
         return {"status": "HEALTHY", "service": "lockulture-backend"}
 
-    def envelope(status, code, message):
-        return JSONResponse(status_code=status, content={"error": {
-            "code": code, "message": message, "retryable": status == 503,
+    def envelope(status, code, message, retry_after=None):
+        return JSONResponse(status_code=status, headers={"Retry-After": str(retry_after)} if retry_after else None, content={"error": {
+            "code": code, "message": message, "retryable": status in (429, 503) or retry_after is not None,
             "request_id": str(uuid4()),
         }})
 
     @app.exception_handler(SocialError)
     def social_error(_: Request, error: SocialError):
-        return envelope(error.status, error.code, error.message)
+        return envelope(error.status, error.code, error.message, error.retry_after)
 
     @app.exception_handler(RequestValidationError)
     def validation_error(_: Request, error: RequestValidationError):
@@ -74,6 +75,7 @@ def create_app(*, social=None):
         app.include_router(assets_router)
         app.include_router(platform_router)
         app.include_router(router)
+    app.include_router(worker_router)
     return app
 
 

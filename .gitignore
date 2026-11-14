@@ -51,3 +51,8 @@ mobile/expo-env.d.ts
 *.tsbuildinfo
 
 /legacy/
+
+# Firebase Emulator logs
+/firebase-debug.log
+/firestore-debug.log
+/ui-debug.log

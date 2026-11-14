@@ -1,21 +1,16 @@
-"""Platform routes: /me, /timeline, /discoveries, /leaderboard.
-
-These routes use Firestore directly (not through SocialRepository)
-because they deal with eras, profiles, and XP ledger — not social graph data.
-"""
+"""Profile bootstrap, profile editing and timeline routes."""
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 from .firebase import get_db
-from .social.core import SocialError, digest, normalized, page, require, timestamp, created_key
+from .social.core import SocialError, mutate, require
 
 CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
 router = APIRouter(prefix="/api/v1")
@@ -29,7 +24,14 @@ class Input(BaseModel):
 
 class ProfilePatch(Input):
     display_name: Name | None = None
-    bio: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
+    username: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{3,24}$")] | None = None
+    bio: Annotated[str, StringConstraints(max_length=160)] | None = None
+
+    @model_validator(mode="after")
+    def validate_changes(self):
+        if not self.model_fields_set or any(getattr(self, field) is None for field in self.model_fields_set):
+            raise ValueError("Provide at least one non-null profile field")
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +40,7 @@ class ProfilePatch(Input):
 
 def require_actor(request: Request, authorization: Annotated[str | None, Header()] = None) -> str:
     """Resolve Firebase ID token to internal UUID. Used in platform routes."""
-    from .auth import FirebaseActorResolver, _create_or_get_identity, _uid_key
+    from .auth import FirebaseActorResolver
     scheme, _, token = (authorization or "").partition(" ")
     if not (scheme.lower() == "bearer" and token):
         raise SocialError(401, "Authentication required")
@@ -102,20 +104,29 @@ def get_me(actor: ActorOrCreate):
 
 
 @router.patch("/me", operation_id="updateMe")
-def patch_me(body: ProfilePatch, actor: Actor,
+def patch_me(body: ProfilePatch, actor: Actor, request: Request,
              key: Annotated[UUID, Header(alias="Idempotency-Key")]):
-    db = get_db()
-    updates: dict = {}
-    if body.display_name is not None:
-        updates["display_name"] = body.display_name
-    if body.bio is not None:
-        updates["bio"] = body.bio
-    if not updates:
-        snap = db.collection("profiles").document(actor).get()
-        return _profile_dto(snap.to_dict())
-    db.collection("profiles").document(actor).update(updates)
-    snap = db.collection("profiles").document(actor).get()
-    return _profile_dto(snap.to_dict())
+    updates = body.model_dump(exclude_unset=True)
+
+    def update(tx):
+        profile = tx.get("users", actor)
+        require(profile is not None, 404, "Profile not found")
+        username = updates.get("username")
+        if username and username != profile["username"]:
+            reservation = tx.get("usernames", username)
+            require(not reservation or reservation["owner_id"] == actor, 409, "Username already taken")
+            previous = tx.get("usernames", profile["username"])
+            if previous and previous["owner_id"] == actor:
+                tx.delete("usernames", profile["username"])
+            tx.put("usernames", username, {"owner_id": actor})
+        profile = {**profile, **updates}
+        tx.put("users", actor, profile)
+        return _profile_dto(profile)
+
+    result = mutate(request.app.state.social.repository, actor, "updateMe", str(key), [], updates, 200, update)
+    if "error" in result:
+        return JSONResponse({"error": result["error"]}, status_code=result["status"])
+    return result["body"]
 
 
 def _profile_dto(data: dict) -> dict:
@@ -124,7 +135,7 @@ def _profile_dto(data: dict) -> dict:
         "display_name": data["display_name"],
         "username": data["username"],
         "bio": data.get("bio", ""),
-        "xp": data.get("xp_total", 0),
+        "xp": data.get("xp_total", data.get("xp", 0)),
     }
 
 
@@ -134,27 +145,18 @@ def _profile_dto(data: dict) -> dict:
 
 @router.get("/timeline", operation_id="getTimeline")
 def get_timeline(actor: Actor):
-    # Load canonical eras
-    eras_data = json.loads((CONTRACTS / "fixtures/eras.json").read_text(encoding="utf-8"))
-
-    # Load actor's era_progress
-    progress_by_era: dict = {}
+    progress_by_era = {}
     env = os.getenv("ENV", "production")
-    fixtures_on = os.getenv("LOCKULTURE_SOCIAL_FIXTURES") == "1"
-    if not (env in {"development", "test"} and fixtures_on and actor in {
-        row["id"] for row in json.loads(
-            (CONTRACTS / "fixtures/identities.json").read_text(encoding="utf-8")
-        )["users"].values()
-    }):
+    fixture = env in {"development", "test"} and os.getenv("LOCKULTURE_SOCIAL_FIXTURES") == "1"
+    if fixture:
+        eras_data = json.loads((CONTRACTS / "fixtures/eras.json").read_text(encoding="utf-8"))
+    else:
         db = get_db()
-        progress_snaps = (db.collection("era_progress")
-                          .where("owner_id", "==", actor)
-                          .stream())
-        for s in progress_snaps:
-            d = s.to_dict()
-            era_id = d.get("era_id")
-            if era_id:
-                progress_by_era[era_id] = d
+        eras_data = [snap.to_dict() for snap in db.collection("eras").stream()]
+        require(len(eras_data) == 10, 503, "Era catalog has not been seeded")
+        for snap in db.collection("era_progress").where("owner_id", "==", actor).stream():
+            progress = snap.to_dict()
+            progress_by_era[progress["era_id"]] = progress
 
     items = []
     for era in sorted(eras_data, key=lambda e: e["sort_order"]):
@@ -162,26 +164,18 @@ def get_timeline(actor: Actor):
         fragment_count = prog.get("fragment_count", 0)
         goal = era["fragment_goal"]
         if fragment_count == 0:
-            status = "locked"
+            status = "not_started"
         elif fragment_count >= goal:
-            status = "complete"
+            status = "decoded"
         else:
             status = "in_progress"
         items.append({
-            "era_id": era["id"],
+            "id": era["id"],
             "name": era["name"],
             "period": era["period"],
-            "sort_order": era["sort_order"],
             "fragment_count": fragment_count,
             "fragment_goal": goal,
             "status": status,
         })
 
-    return {"items": items}
-
-
-# ---------------------------------------------------------------------------
-# /leaderboard — overrides the in-memory version from social/http.py
-# ---------------------------------------------------------------------------
-# (Already implemented in social/http.py using repository; no change needed
-#  as long as the repository contains xp from profiles.)
+    return {"items": items, "next_cursor": None}

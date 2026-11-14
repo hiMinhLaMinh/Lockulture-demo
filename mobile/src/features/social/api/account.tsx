@@ -11,6 +11,7 @@ import { Page } from '@/shared/components/page';
 import { Screen } from '@/shared/components/screen';
 import { Surface, commonStyles as c } from '@/shared/components/surface';
 import { leaderboard, socialRequest, user } from '@/services/api/social';
+import { useCaptureStore } from '@/state/capture-store';
 import { Person } from '@/features/social/ui';
 import { ErrorNote, QueryView } from './components';
 import { useRefreshOnFocus, useSocialQuery } from './hooks';
@@ -33,6 +34,7 @@ function FixtureActorPicker({ onSignedIn }: { onSignedIn?: () => void }) {
     setError(null);
     try {
       const profile = await socialRequest(tokenFor(actor), '/me', user);
+      useCaptureStore.setState({ draft: null, continuation: null });
       client.clear();
       client.setQueryData(['social', actor, '/me'], profile);
       useFixtureSession.setState({ actor });
@@ -62,7 +64,7 @@ function FixtureActorPicker({ onSignedIn }: { onSignedIn?: () => void }) {
 }
 
 export function FirebaseLogin() {
-  const client = useQueryClient();
+  const bootstrapError = useFirebaseSession((state) => state.error);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
@@ -75,6 +77,7 @@ export function FirebaseLogin() {
     setMessage('');
     try {
       const auth = await authFromConfig();
+      if (auth.currentUser) await signOut(auth);
       const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
       await reload(credential.user);
       if (!credential.user.emailVerified) {
@@ -83,12 +86,6 @@ export function FirebaseLogin() {
         setMessage('Email chưa được xác minh. Đã gửi lại liên kết xác minh; hãy kiểm tra hộp thư.');
         return;
       }
-      const profile = await socialRequest(undefined, '/me', user);
-      useFixtureSession.setState({ actor: null });
-      useFirebaseSession.setState({ user: credential.user, ready: true, error: null });
-      client.clear();
-      client.setQueryData(['social', credential.user.uid, '/me'], profile);
-      router.replace('/(main)/(tabs)/feed');
     } catch (cause) {
       setError(authError(cause));
     } finally {
@@ -119,7 +116,7 @@ export function FirebaseLogin() {
         secureTextEntry
         textContentType="password"
       />
-      {error ? <ErrorNote error={new Error(error)} /> : null}
+      <ErrorNote error={error ? new Error(error) : bootstrapError} />
       {message ? <Text style={c.body}>{message}</Text> : null}
       <Action label="Đăng nhập" loading={pending} onPress={() => void login()} />
       <Action secondary label="Đăng ký" href="/(auth)/register" />
@@ -141,6 +138,7 @@ export function ApiProfile() {
     await signOut(auth);
     useFirebaseSession.setState({ user: null, ready: true, error: null });
     useFixtureSession.setState({ actor: null });
+    useCaptureStore.setState({ draft: null, continuation: null });
     queryClient.clear();
     router.replace('/(auth)/login');
   }
