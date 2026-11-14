@@ -8,11 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Cài đặt dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Sao chép mã nguồn
-COPY . .
+COPY backend/src /app/src
+COPY contracts /contracts
 
 # Biến môi trường mặc định của Cloud Run
 ENV PORT=8080

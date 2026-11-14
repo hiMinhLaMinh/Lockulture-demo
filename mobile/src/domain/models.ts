@@ -54,6 +54,9 @@ export type CaptureDraft = {
   mission: Mission | null;
   photo: CapturedPhoto;
   evidence: CapturedPhoto[];
+  apiKeys?: { upload: string; submit: string; retry: string };
+  submissionId?: string;
+  serverSession?: { id: string; previous: string };
   scenario: CaptureScenario;
 };
 export type CaptureAssessment = {

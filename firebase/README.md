@@ -8,4 +8,4 @@ Firestore không dùng SQL migrations/FK/unique constraints. Backend phải vali
 
 Rules đi kèm chặn client đọc/ghi trực tiếp toàn bộ database/bucket; server Admin SDK dùng IAM và phải tự kiểm ACL. Không coi deny rules là bảo vệ chống lỗi backend.
 
-Chưa provision project, deploy rules hoặc chạy Emulator. SQL cũ tại legacy/supabase-pack chỉ để tham khảo lịch sử, không phải schema mục tiêu.
+Project `lockulture-f9c7d` là đích staging. Dùng [runbook giai đoạn B](../docs/implementation/PHASE_B_HANDOFF.md) để chạy Emulator và cấu hình deploy rules, indexes và Storage private. Tên bucket lấy từ project. `STORAGE_TYPE=local` dùng cho development/test.

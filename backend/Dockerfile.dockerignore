@@ -1,0 +1,9 @@
+**
+!backend/
+!backend/Dockerfile
+!backend/requirements.txt
+!backend/src/
+!backend/src/**
+!contracts/
+!contracts/**
+**/__pycache__/

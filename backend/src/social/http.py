@@ -98,7 +98,7 @@ def health():
     return {"status": "ok", "contract_version": "1.0.0"}
 
 
-@router.get("/me", operation_id="getMe")
+@router.get("/me", operation_id="getMe", include_in_schema=False)
 def me(ctx: Context):
     return read(ctx, relations.user)
 
@@ -327,7 +327,7 @@ def delete_comment(comment_id: UUID, key: Key, ctx: Context):
                  posts.delete_comment(tx, actor, str(comment_id)), path=(comment_id,))
 
 
-@router.get("/assets/{asset_id}/url", operation_id="getAssetUrl")
+@router.get("/assets/{asset_id}/url", operation_id="getAssetUrl", include_in_schema=False)
 def asset_url(asset_id: UUID, request: Request, response: Response, ctx: Context, post_id: UUID | None = None):
     services, _ = ctx
     asset = str(asset_id)

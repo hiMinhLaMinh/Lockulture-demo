@@ -83,10 +83,11 @@ export function pageSchema<T>(item: z.ZodType<T>) {
 }
 
 export async function socialRequest<T>(
-  token: string,
+  token: string | undefined,
   path: string,
   schema: z.ZodType<T>,
   options?: RequestInit,
+  actor?: string | null,
 ): Promise<T> {
-  return schema.parse(await requestJson<unknown>(path, options, token));
+  return schema.parse(await requestJson<unknown>(path, options, token, actor));
 }

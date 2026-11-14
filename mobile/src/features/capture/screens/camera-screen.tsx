@@ -10,21 +10,26 @@ import { colors } from '@/shared/theme/tokens';
 import { useAppStore } from '@/state/app-store';
 import { useCaptureStore } from '@/state/capture-store';
 import { preparePhoto } from '@/features/capture/lib/photo';
+import { env } from '@/config/env';
+import { currentActor, useActorId } from '@/features/social/api/session';
 export default function CameraScreen() {
   const { mode: rawMode, missionId } = useLocalSearchParams<{
     mode?: string;
     missionId?: string;
   }>();
   const mode = rawMode === 'mission' ? 'mission' : 'free';
-  const user = useAppStore((s) => s.mockUser);
+  const mockUser = useAppStore((s) => s.mockUser);
+  const actor = useActorId();
+  const owner = env.dataSource === 'api' ? actor : mockUser?.id;
   const mission = useAppStore((s) => s.activeMission);
   const records = useCaptureStore((s) => s.records);
   const valid =
     mode === 'free' ||
-    (!!mission &&
+    (env.dataSource === 'mock' &&
+      !!mission &&
       mission.id === missionId &&
       !records.some(
-        (r) => r.ownerId === user?.id && r.missionId === mission.id && r.verdict === 'completed',
+        (r) => r.ownerId === owner && r.missionId === mission.id && r.verdict === 'completed',
       ));
   const [permission, requestPermission, refreshPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
@@ -56,20 +61,24 @@ export default function CameraScreen() {
   }, [refreshPermission]);
 
   async function shoot() {
-    if (lock.current || !ready || !focused || !foreground || !camera.current || !user) return;
+    if (lock.current || !ready || !focused || !foreground || !camera.current || !owner) return;
     lock.current = true;
     setBusy(true);
     setError('');
     try {
       const photo = await camera.current.takePictureAsync({ quality: 0.85 });
       const saved = await preparePhoto(photo);
-      if (!mounted.current || !focusRef.current || useAppStore.getState().mockUser?.id !== user.id)
+      if (
+        !mounted.current ||
+        !focusRef.current ||
+        (env.dataSource === 'api' ? currentActor() : useAppStore.getState().mockUser?.id) !== owner
+      )
         return;
       if (mode === 'mission' && useAppStore.getState().activeMission?.id !== missionId)
         throw new Error('Nhiệm vụ đã thay đổi. Hãy mở lại camera từ nhiệm vụ hiện tại.');
       const draft = useCaptureStore
         .getState()
-        .start(saved, user.id, mode, mode === 'mission' ? mission : null);
+        .start(saved, owner, mode, mode === 'mission' ? mission : null);
       router.push({ pathname: '/(main)/capture/preview', params: { id: draft.id } });
     } catch {
       if (mounted.current) setError('Chưa chụp hoặc lưu được ảnh. Kiểm tra camera và thử lại.');

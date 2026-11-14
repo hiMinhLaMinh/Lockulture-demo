@@ -14,6 +14,14 @@ npm run start:go
 
 Nếu không dùng nvm, cài/chọn Node 24 bằng công cụ quản lý Node đang dùng. Biến môi trường mặc định là mock nên không bắt buộc tạo `.env` để xem khung.
 
+### Firebase Auth và API mode
+
+Để chạy luồng Firebase, điền các `EXPO_PUBLIC_FIREBASE_*` trong `mobile/.env` từ Firebase Web app config và đặt `EXPO_PUBLIC_DATA_SOURCE=api`. Firebase JS SDK dùng Email/Password; đăng ký gửi email xác minh, backend chỉ nhận ID token có `email_verified=true`. Không đưa service-account JSON hoặc Gemini/Maps keys vào mobile.
+
+Backend local đọc `backend/.env` và `backend/service-account.json`; cả hai file đều bị Git bỏ qua. Có thể chạy bằng Docker Compose ở repo root hoặc chạy Uvicorn trong thư mục `backend`. Android Emulator dùng `http://10.0.2.2:8080/api/v1`; điện thoại thật cần thay bằng địa chỉ LAN của máy chạy backend. API tự lấy Firebase ID token, làm mới một lần khi nhận 401 và gửi lại cùng request.
+
+Upload trong API mode gửi multipart tới FastAPI. Dev/test có thể dùng `STORAGE_TYPE=local`; staging dùng `STORAGE_TYPE=firebase` và bucket private. Xem [hướng dẫn bàn giao B](../docs/implementation/PHASE_B_HANDOFF.md) để cấu hình worker và môi trường.
+
 - Quét QR bằng **Expo Go tương thích SDK 58**; nếu Expo Go trên thiết bị chưa hỗ trợ SDK này, dùng development build.
 - `npm run web`: xem nhanh UI trên web.
 - `npm run start:tunnel`: kết nối qua tunnel; có thể yêu cầu tải thành phần tunnel của Expo khi chạy lần đầu, không đảm bảo hoạt động nếu mạng chặn.

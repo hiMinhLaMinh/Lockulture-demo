@@ -36,6 +36,7 @@ type State = {
     missionId: string | null;
     sessionId: string;
     evidence: CapturedPhoto[];
+    serverSession?: CaptureDraft['serverSession'];
   } | null;
   start: (
     photo: CapturedPhoto,
@@ -120,6 +121,7 @@ export const useCaptureStore = create<State>()(
           mission,
           photo,
           evidence: previous?.evidence ?? [],
+          serverSession: previous?.serverSession,
           scenario: 'success',
         };
         set({ draft, continuation: null });

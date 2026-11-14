@@ -76,12 +76,14 @@ class MemoryRepository:
 
 
 class SocialError(Exception):
-    def __init__(self, status: int, message: str, code: str | None = None):
+    def __init__(self, status: int, message: str, code: str | None = None, *, retry_after: int | None = None):
         self.status = status
+        self.retry_after = retry_after
         self.message = message
         self.code = code or {
             401: "unauthorized", 403: "forbidden", 404: "not_found",
             409: "conflict", 422: "validation_error", 503: "provider_failed",
+            413: "asset_invalid", 415: "asset_invalid", 429: "rate_limited",
         }[status]
 
 
@@ -125,7 +127,8 @@ def page(rows, limit, cursor, scope, key, *, descending=False):
             require(stored_scope == scope_hash and isinstance(sort_value, str), 422, "Invalid cursor scope")
             require(str(UUID(item_id)) == item_id, 422, "Invalid cursor ID")
             if descending:
-                require(timestamp(datetime.fromisoformat(sort_value)) == sort_value, 422, "Invalid cursor date")
+                parsed_date = sort_value.replace("Z", "+00:00")
+                require(timestamp(datetime.fromisoformat(parsed_date)) == sort_value, 422, "Invalid cursor date")
             boundary = (sort_value, item_id)
         except (ValueError, TypeError, AttributeError, binascii.Error) as error:
             raise SocialError(422, "Invalid cursor") from error
@@ -148,7 +151,8 @@ def user_key(row):
 
 
 def created_key(row):
-    return timestamp(datetime.fromisoformat(row["created_at"])), row["id"]
+    value = row["created_at"].replace("Z", "+00:00")
+    return timestamp(datetime.fromisoformat(value)), row["id"]
 
 
 def mutate(repository, actor, operation_id, key, path, body, status, operation, clock=now):
