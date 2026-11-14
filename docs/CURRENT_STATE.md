@@ -1,6 +1,14 @@
-# Hiện trạng code — 11/11/2026
+# Hiện trạng code — 12/11/2026
 
-[Chỉ mục](README.md) · Đối chiếu tại branch `docs/align-mvp-agentic-flow`.
+[Chỉ mục](README.md) · [Bàn giao Giai đoạn A](implementation/PHASE_A_HANDOFF.md)
+
+## Giai đoạn A trên branch `codex/phase-a-social`
+
+- FastAPI phục vụ bạn bè, lời mời, nhóm, feed, bài đăng, chia sẻ, reaction và bình luận qua HTTP v1. Kiểm quyền và lưu replay trong giao dịch in-memory. Ảnh demo cấp URL có thời hạn sau khi kiểm quyền.
+- Expo chế độ API có phiên dev A/B/C/D, Friends, Groups, Compose, Feed, Post Detail và tương tác qua HTTP. Bộ sưu tập, hồ sơ và leaderboard đọc dữ liệu seed từ backend. Chế độ mock vẫn dùng dữ liệu local cũ.
+- Fixture chỉ chạy khi bật trong môi trường dev/test. Hồ sơ, discovery, XP, Firebase Auth/Firestore/Storage thật, upload, mission và AI vẫn thuộc các giai đoạn sau. Xem lệnh chạy, endpoint và interface tại tài liệu bàn giao.
+
+Các bảng bên dưới mô tả baseline UI mock và các luồng ngoài phạm vi social API.
 
 ## Nền tảng và cấu trúc
 
@@ -58,7 +66,7 @@ Draft capture và continuation không phải toàn bộ đều được persist;
 
 ## Giới hạn kiểm chứng
 
-Đã chạy TypeScript/lint, smoke test tương tác trên browser với mock và export JS bundle Android/iOS ở các đợt trước. Chưa kiểm chứng toàn bộ trên thiết bị vật lý hoặc backend đa tài khoản. Export bundle không phải native binary build. Không có URL production đã được xác nhận. Xem [kế hoạch tích hợp](integration/PLAN.md).
+Đã chạy TypeScript/lint, smoke test tương tác trên browser với mock và export JS bundle Android/iOS ở các đợt trước. Chưa kiểm chứng toàn bộ trên thiết bị vật lý hoặc backend đa tài khoản live. Export bundle không phải native binary build. Không có URL production đã được xác nhận. Xem [kế hoạch tích hợp](integration/PLAN.md).
 
 ## Bộ đầu vào triển khai mới (11/11/2026)
 
