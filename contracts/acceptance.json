@@ -185,7 +185,7 @@
       "layer": "http",
       "given": "A discovery unposted, B friend and memberG, C not selected",
       "when": "A publish directB + G; retry same key; GET feed as A/B/C",
-      "then": "201 one Post; A/B see once, C cannot see; author audience populated, viewer null; blank audience422; duplicate discovery new key409",
+      "then": "201 one Post; A/B see once, C cannot see; author audience populated, viewer null; blank audience422; limits count distinct IDs per request; duplicate discovery new key409",
       "evidence": "pending implementation"
     },
     {
@@ -196,7 +196,7 @@
       "layer": "http",
       "given": "Post shared G1; A memberG2; C newly joinedG1 after publication",
       "when": "A add G2 and already-sharedG1",
-      "then": "G2 snapshot created once, C receives no old G1 grant; all-or-nothing if any target invalid",
+      "then": "G2 snapshot created once, C receives no old G1 grant; historical audience can exceed ten groups; all-or-nothing if any target invalid",
       "evidence": "pending implementation"
     },
     {

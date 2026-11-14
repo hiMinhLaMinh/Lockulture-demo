@@ -32,6 +32,7 @@ class SocialTransaction(Protocol):
     def get(self, collection: str, key: str) -> Record | None: ...
     def rows(self, collection: str) -> list[Record]: ...
     def put(self, collection: str, key: str, record: Record) -> None: ...
+    def delete(self, collection: str, key: str) -> None: ...
 
 
 class SocialRepository(Protocol):
@@ -51,6 +52,10 @@ class MemoryTransaction:
 
     def put(self, collection, key, record):
         self.tables.setdefault(collection, {})[key] = deepcopy(record)
+
+
+    def delete(self, collection, key):
+        self.tables.get(collection, {}).pop(key, None)
 
 
 class MemoryRepository:
@@ -90,7 +95,7 @@ def now():
 
 
 def timestamp(value):
-    return value.isoformat().replace("+00:00", "Z")
+    return value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def new_id():
@@ -143,7 +148,7 @@ def user_key(row):
 
 
 def created_key(row):
-    return row["created_at"], row["id"]
+    return timestamp(datetime.fromisoformat(row["created_at"])), row["id"]
 
 
 def mutate(repository, actor, operation_id, key, path, body, status, operation, clock=now):

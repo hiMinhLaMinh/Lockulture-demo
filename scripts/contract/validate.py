@@ -57,9 +57,9 @@ assert config['free_xp'] in schemas['Discovery']['properties']['xp_awarded']['en
 assert config['max_evidence_images'] == schemas['Submission']['properties']['evidence_count']['maximum']
 assert config['max_upload_bytes'] == schemas['Asset']['properties']['byte_size']['maximum']
 assert config['max_caption_chars'] == schemas['PostInput']['properties']['caption']['maxLength']
-assert config['max_direct_recipients'] == schemas['Audience']['properties']['friend_ids']['maxItems']
-assert config['max_group_recipients'] == schemas['Audience']['properties']['group_ids']['maxItems']
-assert config['max_group_members'] == schemas['GroupInput']['properties']['member_ids']['maxItems'] + 1
+assert config['max_direct_recipients'] == schemas['PostInput']['properties']['friend_ids']['x-max-distinct-items']
+assert config['max_group_recipients'] == schemas['PostInput']['properties']['group_ids']['x-max-distinct-items']
+assert config['max_group_members'] == schemas['GroupInput']['properties']['member_ids']['x-max-distinct-items'] + 1
 
 flow = json.loads((ROOT / 'contracts/acceptance.json').read_text())
 covered = {op for case in flow['cases'] for op in case['operations']}

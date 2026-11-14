@@ -1,5 +1,7 @@
 """Explicit development adapters, backed by the contract's synthetic identities."""
+import hmac
 import json
+import secrets
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -43,8 +45,24 @@ class FixtureDiscoveries:
 
 
 class FixtureUrls:
+    image = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
+    <rect width="640" height="480" fill="#174E4B"/>
+    <path d="M0 400L200 180L340 320L475 135L640 380V480H0Z" fill="#356268"/>
+    <circle cx="150" cy="105" r="37" fill="#F4C568"/></svg>"""
+
+    def __init__(self):
+        self.secret = secrets.token_bytes(32)
+
+    def signature(self, asset_id, expires):
+        return hmac.digest(self.secret, f"{asset_id}:{expires}".encode(), "sha256").hex()
+
     def issue(self, asset_id, expires_at):
-        return f"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20640%20480'%3E%3Crect%20width='640'%20height='480'%20fill='%23174E4B'/%3E%3Cpath%20d='M0%20400L200%20180L340%20320L475%20135L640%20380V480H0Z'%20fill='%23356268'/%3E%3Ccircle%20cx='150'%20cy='105'%20r='37'%20fill='%23F4C568'/%3E%3C/svg%3E"
+        expires = int(expires_at.timestamp())
+        return f"/_dev/social-assets/{asset_id}?expires={expires}&signature={self.signature(asset_id, expires)}"
+
+    def valid(self, asset_id, expires, signature, time):
+        return (time.timestamp() < expires and signature.isascii()
+                and hmac.compare_digest(signature, self.signature(asset_id, expires)))
 
 
 def load_fixture_services():

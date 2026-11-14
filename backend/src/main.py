@@ -1,13 +1,13 @@
 import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .social.core import SocialError
-from .social.fixtures import load_fixture_services
+from .social.core import SocialError, require
+from .social.fixtures import FixtureUrls, load_fixture_services
 from .social.http import router
 
 
@@ -48,6 +48,15 @@ def create_app(*, social=None):
     @app.exception_handler(Exception)
     def internal_error(_: Request, error: Exception):
         return envelope(500, "internal_error", "Internal server error")
+
+    if app.state.social and isinstance(app.state.social.urls, FixtureUrls):
+        @app.get("/_dev/social-assets/{asset_id}", include_in_schema=False)
+        def fixture_image(asset_id: UUID, expires: int, signature: str):
+            services = app.state.social
+            require(services.urls.valid(str(asset_id), expires, signature, services.clock()),
+                    404, "Asset not found")
+            return Response(services.urls.image, media_type="image/svg+xml",
+                            headers={"Cache-Control": "no-store"})
 
     app.include_router(router)
     return app

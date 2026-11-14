@@ -1,4 +1,6 @@
 """FastAPI adapter for the v1 social contract."""
+from datetime import timedelta
+from urllib.parse import urljoin
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -6,11 +8,15 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 
-from . import relationships as relations
-from .core import SocialError, created_key, mutate, normalized, now, page, require, user_key
+from . import posts, relationships as relations
+from .core import SocialError, created_key, mutate, normalized, page, require, timestamp, user_key
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 Search = Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=50)]
+EraId = Literal[
+    "ERA_ANCIENT", "ERA_BAC_THUOC", "ERA_NGO_DINH_TIEN_LE", "ERA_LY_TRAN", "ERA_LE_SO",
+    "ERA_MAC_LE_TRUNG_HUNG", "ERA_TAY_SON", "ERA_NGUYEN", "ERA_MODERN", "ERA_CONTEMPORARY",
+]
 Limit = Annotated[int, Query(ge=1, le=50)]
 Key = Annotated[UUID, Header(alias="Idempotency-Key")]
 router = APIRouter(prefix="/api/v1")
@@ -33,7 +39,7 @@ class GroupName(Input):
 
 
 def distinct_ids(ids, maximum):
-    ids = list(dict.fromkeys(ids))
+    ids = sorted(set(ids))
     if len(ids) > maximum:
         raise ValueError(f"At most {maximum} distinct IDs")
     return ids
@@ -216,3 +222,159 @@ def add_members(group_id: UUID, body: Members, key: Key, ctx: Context):
 def remove_member(group_id: UUID, user_id: UUID, key: Key, ctx: Context):
     return write(ctx, "removeMember", key, 204, lambda tx, actor, _:
                  relations.remove_member(tx, actor, str(group_id), str(user_id)), path=(group_id, user_id))
+
+
+class PublishInput(Input):
+    discovery_id: UUID
+    caption: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+    friend_ids: list[UUID]
+    group_ids: list[UUID]
+
+    @field_validator("friend_ids", "group_ids")
+    @classmethod
+    def check_ids(cls, ids, info):
+        return distinct_ids(ids, 50 if info.field_name == "friend_ids" else 10)
+
+
+class ShareInput(Input):
+    group_ids: list[UUID]
+
+    @field_validator("group_ids")
+    @classmethod
+    def check_ids(cls, ids):
+        return distinct_ids(ids, 10)
+
+
+class ReactionInput(Input):
+    reaction: Literal["heart", "clap", "wow"]
+
+
+class CommentInput(Input):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+
+
+@router.post("/posts", operation_id="publishPost", status_code=201)
+def publish_post(body: PublishInput, key: Key, ctx: Context):
+    require(body.friend_ids or body.group_ids, 422, "Select at least one recipient")
+    return write(ctx, "publishPost", key, 201, lambda tx, actor, time:
+                 posts.publish(tx, actor, body, ctx[0].discovery, time), body=body)
+
+
+@router.get("/posts", operation_id="listPosts")
+def list_posts(ctx: Context, group_id: UUID | None = None,
+               limit: Limit = 20, cursor: str | None = None):
+    def list_rows(tx, actor):
+        group = relations.visible_group(tx, actor, str(group_id)) if group_id else None
+        rows = [post for post in tx.rows("posts") if not post["deleted"] and
+                (relations.live_group_grant(post, group, actor) if group else posts.can_read(tx, post, actor))]
+        result = page(rows, limit, cursor, ["posts", actor, str(group_id)], created_key, descending=True)
+        result["items"] = [posts.post_dto(tx, post, actor) for post in result["items"]]
+        return result
+
+    return read(ctx, list_rows)
+
+
+@router.get("/posts/{post_id}", operation_id="getPost")
+def get_post(post_id: UUID, ctx: Context):
+    return read(ctx, lambda tx, actor: posts.post_dto(tx, posts.visible_post(tx, actor, str(post_id)), actor))
+
+
+@router.delete("/posts/{post_id}", operation_id="deletePost", status_code=204)
+def delete_post(post_id: UUID, key: Key, ctx: Context):
+    return write(ctx, "deletePost", key, 204, lambda tx, actor, _:
+                 posts.delete_post(tx, actor, str(post_id)), path=(post_id,))
+
+
+@router.post("/posts/{post_id}/shares", operation_id="addPostGroups")
+def share_post(post_id: UUID, body: ShareInput, key: Key, ctx: Context):
+    return write(ctx, "addPostGroups", key, 200, lambda tx, actor, _:
+                 posts.share(tx, actor, str(post_id), map(str, body.group_ids)), path=(post_id,), body=body)
+
+
+@router.put("/posts/{post_id}/reaction", operation_id="setReaction")
+def set_reaction(post_id: UUID, body: ReactionInput, key: Key, ctx: Context):
+    return write(ctx, "setReaction", key, 200, lambda tx, actor, _:
+                 posts.react(tx, actor, str(post_id), body.reaction), path=(post_id,), body=body)
+
+
+@router.delete("/posts/{post_id}/reaction", operation_id="removeReaction", status_code=204)
+def remove_reaction(post_id: UUID, key: Key, ctx: Context):
+    return write(ctx, "removeReaction", key, 204, lambda tx, actor, _:
+                 posts.react(tx, actor, str(post_id), None), path=(post_id,))
+
+
+@router.get("/posts/{post_id}/comments", operation_id="listComments")
+def list_comments(post_id: UUID, ctx: Context, limit: Limit = 20, cursor: str | None = None):
+    def list_rows(tx, actor):
+        posts.visible_post(tx, actor, str(post_id))
+        rows = [row for row in tx.rows("comments") if row["post_id"] == str(post_id) and not row["deleted"]]
+        result = page(rows, limit, cursor, ["comments", actor, str(post_id)], created_key, descending=True)
+        result["items"] = [posts.comment_dto(tx, row) for row in result["items"]]
+        return result
+
+    return read(ctx, list_rows)
+
+
+@router.post("/posts/{post_id}/comments", operation_id="createComment", status_code=201)
+def create_comment(post_id: UUID, body: CommentInput, key: Key, ctx: Context):
+    return write(ctx, "createComment", key, 201, lambda tx, actor, time:
+                 posts.create_comment(tx, actor, str(post_id), body.text, time), path=(post_id,), body=body)
+
+
+@router.delete("/comments/{comment_id}", operation_id="deleteComment", status_code=204)
+def delete_comment(comment_id: UUID, key: Key, ctx: Context):
+    return write(ctx, "deleteComment", key, 204, lambda tx, actor, _:
+                 posts.delete_comment(tx, actor, str(comment_id)), path=(comment_id,))
+
+
+@router.get("/assets/{asset_id}/url", operation_id="getAssetUrl")
+def asset_url(asset_id: UUID, request: Request, response: Response, ctx: Context, post_id: UUID | None = None):
+    services, _ = ctx
+    asset = str(asset_id)
+
+    def check_asset(tx, actor):
+        owner = services.discovery.asset_owner(asset)
+        require(owner is not None, 404, "Asset not found")
+        if owner != actor:
+            require(post_id is not None, 404, "Asset not found")
+            post = posts.visible_post(tx, actor, str(post_id))
+            require(post["asset_id"] == asset, 404, "Asset not found")
+
+    read(ctx, check_asset)
+    expires_at = services.clock() + timedelta(seconds=60)
+    url = services.urls.issue(asset, expires_at)
+    response.headers["Cache-Control"] = "no-store"
+    return {"url": urljoin(str(request.base_url), url), "expires_at": timestamp(expires_at)}
+
+
+@router.get("/discoveries", operation_id="listDiscoveries")
+def list_discoveries(ctx: Context, limit: Limit = 20, cursor: str | None = None,
+                     era_id: EraId | None = None, mode: Literal["free", "mission"] | None = None):
+    services, actor = ctx
+    rows = [row for row in services.discovery.discoveries(actor) if row["owner_id"] == actor and
+            (era_id is None or row["era_id"] == era_id) and (mode is None or row["mode"] == mode)]
+    return page(rows, limit, cursor, ["discoveries", actor, era_id, mode], created_key, descending=True)
+
+
+@router.get("/discoveries/{discovery_id}", operation_id="getDiscovery")
+def get_discovery(discovery_id: UUID, ctx: Context):
+    services, actor = ctx
+    row = services.discovery.discovery(str(discovery_id))
+    require(row and row["owner_id"] == actor, 404, "Discovery not found")
+    return row
+
+
+@router.get("/leaderboard", operation_id="getLeaderboard")
+def leaderboard(ctx: Context, scope: Literal["friends"] = "friends"):
+    def rank_users(tx, actor):
+        users = sorted([relations.user(tx, actor), *relations.friend_users(tx, actor)],
+                       key=lambda row: (-row["xp"], *user_key(row)))
+        ranks = {}
+        items = []
+        for index, user in enumerate(users, 1):
+            rank = ranks.setdefault(user["xp"], index)
+            items.append({"user": user, "rank": rank})
+        return {"items": items, "my_rank": ranks[relations.user(tx, actor)["xp"]],
+                "as_of": timestamp(ctx[0].clock())}
+
+    return read(ctx, rank_users)

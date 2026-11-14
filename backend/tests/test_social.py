@@ -86,3 +86,103 @@ def test_group_roles_and_atomic_recipient_validation(client):
     assert created.status_code == 201 and created.json()["name"] == "Nhóm mới"
     assert call(client, "DELETE", f"/groups/{G}").status_code == 204
     assert call(client, "GET", f"/groups/{G}").status_code == 404
+
+
+DISCOVERY = "00000000-0000-4000-8000-000000000015"
+ASSET = "00000000-0000-4000-8000-000000000011"
+
+
+def publish(client, *, friends=(), groups=(G,), key=None, actor="A"):
+    return call(client, "POST", "/posts", actor, key=key, json={
+        "discovery_id": DISCOVERY, "caption": "  Huế  ", "friend_ids": friends, "group_ids": groups,
+    })
+
+
+def test_publish_and_grants(client):
+    assert publish(client, friends=[B, D]).status_code == 422
+    assert publish(client, groups=[G, str(uuid4())]).status_code == 404
+    assert publish(client, groups=[]).status_code == 422
+    assert publish(client, actor="B").status_code == 404
+    key = uuid4()
+    created = publish(client, friends=[B] * 51, groups=[G] * 11, key=key)
+    assert created.status_code == 201
+    assert publish(client, friends=[B], key=key).json() == created.json()
+    post = created.json()
+    assert post["caption"] == "Huế"
+    assert post["audience"] == {"friend_ids": [B], "group_ids": [G]}
+    post_path = f"/posts/{post['id']}"
+    assert call(client, "GET", "/posts", "C").json()["items"] == []
+    assert call(client, "GET", post_path, "C").status_code == 404
+    assert call(client, "GET", "/posts", "B").json()["items"] == [{**post, "audience": None}]
+    url_path = f"/assets/{ASSET}/url?post_id={post['id']}"
+    url = call(client, "GET", url_path, "B")
+    assert url.status_code == 200 and url.headers["cache-control"] == "no-store"
+    assert client.get(url.json()["url"]).headers["content-type"].startswith("image/svg+xml")
+    assert call(client, "GET", url_path, "C").status_code == 404
+    assert call(client, "GET", f"/assets/{ASSET}/url", "B").status_code == 404
+    assert call(client, "DELETE", f"/friends/{B}").status_code == 204
+    assert call(client, "DELETE", f"/groups/{G}").status_code == 204
+    assert call(client, "GET", post_path, "B").status_code == 200
+    assert call(client, "GET", f"/posts?group_id={G}", "B").status_code == 404
+    assert call(client, "DELETE", post_path, "B").status_code == 403
+    for _ in range(2):
+        assert call(client, "DELETE", post_path).status_code == 204
+    assert call(client, "GET", post_path, "B").status_code == 404
+    assert publish(client, groups=[], friends=[C]).status_code == 409
+    assert call(client, "GET", f"/discoveries/{DISCOVERY}").status_code == 200
+    assert call(client, "GET", f"/discoveries/{DISCOVERY}", "B").status_code == 404
+
+
+def test_membership_incarnation_and_comment_cleanup(client):
+    post_id = publish(client).json()["id"]
+    path = f"/posts/{post_id}"
+    comment = call(client, "POST", f"{path}/comments", "B", json={"text": "  Hay  "}).json()
+    assert comment["text"] == "Hay"
+    comment_path = f"/comments/{comment['id']}"
+    assert call(client, "DELETE", comment_path).status_code == 403
+    members = f"/groups/{G}/members"
+    call(client, "DELETE", f"{members}/{B}", "B")
+    call(client, "POST", members, json={"user_ids": [B, C]})
+    assert call(client, "POST", f"{path}/shares", json={"group_ids": [G]}).status_code == 200
+    for actor in ("B", "C"):
+        assert call(client, "GET", path, actor).status_code == 404
+        assert call(client, "GET", f"/posts?group_id={G}", actor).json()["items"] == []
+        assert call(client, "GET", f"/groups/{G}", actor).json()["post_count"] == 0
+        assert call(client, "GET", f"/assets/{ASSET}/url?post_id={post_id}", actor).status_code == 404
+    for _ in range(2):
+        assert call(client, "DELETE", comment_path, "B").status_code == 204
+    assert call(client, "GET", path).json()["comment_count"] == 0
+    second = call(client, "POST", "/groups", json={"name": "Khác", "member_ids": [C]}).json()["id"]
+    assert call(client, "POST", f"{path}/shares", json={"group_ids": [second, str(uuid4())]}).status_code == 404
+    assert call(client, "GET", path, "C").status_code == 404
+    assert call(client, "POST", f"{path}/shares", json={"group_ids": [second]}).status_code == 200
+    assert call(client, "GET", path, "C").status_code == 200
+    assert call(client, "GET", f"/posts?group_id={G}", "C").json()["items"] == []
+
+
+def test_reactions_comments_and_rank(client, services):
+    from datetime import datetime, timezone
+
+    services.clock = lambda: datetime(2026, 11, 12, tzinfo=timezone.utc)
+    post_id = publish(client).json()["id"]
+    path = f"/posts/{post_id}"
+    reaction = f"{path}/reaction"
+    assert call(client, "PUT", reaction, "C", json={"reaction": "heart"}).status_code == 404
+    assert call(client, "PUT", reaction, "B", json={"reaction": "heart"}).status_code == 200
+    key = uuid4()
+    changed = call(client, "PUT", reaction, "B", key=key, json={"reaction": "wow"})
+    assert changed.json()["counts"] == {"heart": 0, "clap": 0, "wow": 1}
+    assert call(client, "PUT", reaction, "B", key=key, json={"reaction": "wow"}).json() == changed.json()
+    assert call(client, "DELETE", reaction, "B").status_code == 204
+    comments = f"{path}/comments"
+    assert call(client, "POST", comments, json={"text": " "}).status_code == 422
+    assert call(client, "POST", comments, json={"text": "😮" * 301}).status_code == 422
+    for _ in range(51):
+        assert call(client, "POST", comments, json={"text": "😮" * 300}).status_code == 201
+    first = call(client, "GET", comments, params={"limit": 50}).json()
+    assert len(first["items"]) == 50
+    second = call(client, "GET", comments, params={"cursor": first["next_cursor"]}).json()
+    assert second["next_cursor"] is None and len(second["items"]) == 1
+    assert second["items"][0]["id"] not in {row["id"] for row in first["items"]}
+    assert call(client, "GET", "/posts", params={"cursor": first["next_cursor"]}).status_code == 422
+    assert [row["rank"] for row in call(client, "GET", "/leaderboard").json()["items"]] == [1, 1, 3]

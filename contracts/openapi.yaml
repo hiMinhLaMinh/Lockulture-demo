@@ -902,7 +902,8 @@ paths:
                   items:
                     type: string
                     format: uuid
-                  maxItems: 19
+                  description: Maximum 19 distinct IDs after deduplication.
+                  x-max-distinct-items: 19
               required:
               - user_ids
   /groups/{group_id}/members/{user_id}:
@@ -1076,7 +1077,8 @@ paths:
                   items:
                     type: string
                     format: uuid
-                  maxItems: 10
+                  description: Maximum 10 distinct IDs after deduplication.
+                  x-max-distinct-items: 10
               required:
               - group_ids
   /posts/{post_id}/reaction:
@@ -1906,7 +1908,8 @@ components:
           items:
             type: string
             format: uuid
-          maxItems: 19
+          description: Maximum 19 distinct IDs after deduplication.
+          x-max-distinct-items: 19
       required:
       - name
       - member_ids
@@ -1919,13 +1922,11 @@ components:
           items:
             type: string
             format: uuid
-          maxItems: 50
         group_ids:
           type: array
           items:
             type: string
             format: uuid
-          maxItems: 10
       required:
       - friend_ids
       - group_ids
@@ -1944,13 +1945,15 @@ components:
           items:
             type: string
             format: uuid
-          maxItems: 50
+          description: Maximum 50 distinct IDs after deduplication.
+          x-max-distinct-items: 50
         group_ids:
           type: array
           items:
             type: string
             format: uuid
-          maxItems: 10
+          description: Maximum 10 distinct IDs after deduplication.
+          x-max-distinct-items: 10
       required:
       - discovery_id
       - caption
