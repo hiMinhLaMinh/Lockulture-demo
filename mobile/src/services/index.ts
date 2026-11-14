@@ -1,3 +1,4 @@
+import { searchMissions } from '@/services/api/missions';
 import { mockMissionService } from '@/services/mock/mission-service';
 import { listTimeline } from '@/services/api/capture';
 import { env } from '@/config/env';
@@ -10,7 +11,7 @@ async function notIntegrated(): Promise<never> {
 const apiExplorationService: ExplorationService = { listEras: listTimeline };
 const apiFeedService: FeedService = { listPosts: notIntegrated };
 // Never silently fall back to fixtures when a real API fails.
-const apiMissionService: MissionService = { search: notIntegrated };
+const apiMissionService: MissionService = { search: searchMissions };
 export const services = {
   missions: env.dataSource === 'mock' ? mockMissionService : apiMissionService,
   exploration: env.dataSource === 'mock' ? mockExplorationService : apiExplorationService,

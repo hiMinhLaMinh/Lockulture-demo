@@ -13,6 +13,18 @@ from .social.core import SocialError, digest, now, require
 CONFIG = json.loads((Path(__file__).resolve().parents[2] / "contracts/fixtures/config.json").read_text())
 
 
+
+def transaction(db, operation, *args):
+    """Preserve retryable Firestore contention hidden by the SDK's ValueError."""
+    from google.api_core.exceptions import GoogleAPICallError, ServiceUnavailable
+    try:
+        return operation(db.transaction(), *args)
+    except ValueError as exc:
+        if isinstance(exc.__cause__, GoogleAPICallError):
+            raise ServiceUnavailable("Firestore transaction contention; retry delivery") from exc
+        raise
+
+
 def read(db, collection, key, tx=None):
     return db.collection(collection).document(key).get(transaction=tx).to_dict()
 
@@ -25,7 +37,7 @@ def submission_dto(submission, session):
     return {
         **{field: submission.get(field) for field in (
             "id", "job_id", "evaluation_session_id", "mode", "status",
-            "verdict", "name", "knowledge", "instruction", "discovery", "error",
+            "verdict", "name", "knowledge", "instruction", "discovery", "error", "location_check",
         )},
         "evidence_count": submission["sequence"],
         "session_status": "expired" if session["expires_at"] <= now()
@@ -78,9 +90,8 @@ def intake_submission(actor, body, key):
     mission_version = payload["mission_version"]
     mode = payload["mode"]
 
-    require(os.getenv("ASSESSMENT_PROVIDER") == "fixture", 503, "Assessment provider unavailable")
-    if os.getenv("ENV") not in {"development", "test"}:
-        require(actor in os.getenv("FIXTURE_ACTOR_IDS", "").split(","), 403, "Fixture assessment is restricted")
+    from .worker.providers import preflight
+    preflight(actor)
 
     @transactional
     def run(tx):
@@ -92,8 +103,19 @@ def intake_submission(actor, body, key):
         asset = read(db, "assets", asset_id, tx)
         require(asset and asset["owner_id"] == actor, 404, "Asset not found")
         require(asset["state"] == "ready", 409, "Asset already used")
+        location_check = None
+        mission = None
         if mission_id:
-            active_mission(db, tx, actor, mission_id, mission_version)
+            from .missions.location import check_location
+            mission = active_mission(db, tx, actor, mission_id, mission_version)
+            require(all(k in mission for k in ("arrival_radius_m", "badge_design", "heritage")),
+                    409, "Mission predates contract 1.1.0; start a new search")
+            require(not mission.get("evaluating_submission_id"), 409, "Mission is being evaluated")
+            location_check = check_location(payload.get("capture_location"), mission, time)
+        portrait_id = payload.get("portrait_asset_id")
+        if portrait_id:
+            portrait = read(db, "assets", portrait_id, tx)
+            require(portrait and portrait["owner_id"] == actor and portrait["state"] == "ready", 404, "Portrait not found")
         if payload["evaluation_session_id"]:
             session = read(db, "evaluation_sessions", session_id, tx)
             require(session and session["owner_id"] == actor, 404, "Session not found")
@@ -117,24 +139,34 @@ def intake_submission(actor, body, key):
             "evaluation_session_id": session_id, "asset_id": asset_id, "mode": mode,
             "mission_id": mission_id, "mission_version": mission_version,
             "sequence": session["evidence_count"], "status": "queued", "created_at": time,
+            "capture_location": payload.get("capture_location"), "location_check": location_check,
+            "location_config_version": CONFIG["version"], "souvenir_opt_in": payload.get("souvenir_opt_in", False),
+            "portrait_asset_id": portrait_id,
+            "previous_instruction": previous.get("instruction") if payload["evaluation_session_id"] else None,
         }
         job = {
-            "schema_version": 1, "id": job_id, "submission_id": submission_id,
+            "schema_version": 1, "kind": "submission", "id": job_id, "submission_id": submission_id,
             "owner_id": actor, "status": "queued", "attempts": 0, "stage": "queued",
             "deadline": time + timedelta(seconds=CONFIG["job_deadline_seconds"]),
             "checkpoint": None, "gemini_calls": 0, "maps_calls": 0,
         }
         response = submission_dto(submission, session)
+        if mission:
+            write(db, tx, "missions", mission_id, {"evaluating_submission_id": submission_id}, merge=True)
+        if portrait_id:
+            write(db, tx, "assets", portrait_id, {"state": "in_submission", "used_at": time}, merge=True)
         write(db, tx, "evaluation_sessions", session_id, session)
         write(db, tx, "submissions", submission_id, submission)
         write(db, tx, "jobs", job_id, job)
         queue(db, tx, job_id, 1, time)
-        write(db, tx, "assets", asset_id, {"state": "in_submission", "used_at": time}, merge=True)
+        write(db, tx, "assets", asset_id, {"state": "in_submission", "used_at": time,
+                   "capture_location": payload.get("capture_location"), "mission_id": mission_id,
+                   "mission_version": mission_version}, merge=True)
         tx.set(rate_ref, rate)
         remember(tx, idem, payload, response, time)
         return response
 
-    return run(db.transaction())
+    return transaction(db, run)
 
 
 def queue(db, tx, job_id, generation, time):
@@ -145,8 +177,16 @@ def queue(db, tx, job_id, generation, time):
 
 
 def can_retry(job, time):
-    return (job["deadline"] > time and job["attempts"] < CONFIG["max_worker_attempts"]
-            and (job.get("checkpoint") is not None or job.get("gemini_calls", 0) < CONFIG["max_gemini_calls_submission"]))
+    if job["deadline"] <= time or job["attempts"] >= CONFIG["max_worker_attempts"]:
+        return False
+    kind = job.get("kind", "submission")
+    if kind == "mission_search":
+        phase = (job.get("checkpoint") or {}).get("phase", "decision")
+        return phase in {"complete", "no_result"} or (
+            job.get("maps_calls", 0) < CONFIG["max_maps_calls"] if phase == "maps"
+            else job.get("gemini_calls", 0) < CONFIG["max_gemini_calls_search"])
+    counter, limit = ("image_calls", "max_image_calls_souvenir") if kind == "souvenir" else ("gemini_calls", "max_gemini_calls_submission")
+    return job.get("checkpoint") is not None or job.get(counter, 0) < CONFIG[limit]
 
 
 def retry_submission(actor, submission_id, key):
@@ -170,8 +210,11 @@ def retry_submission(actor, submission_id, key):
                 and session["expires_at"] > time and session["last_submission_id"] == submission_id,
                 409, "Submission cannot be retried")
         if submission["mission_id"]:
-            active_mission(db, tx, actor, submission["mission_id"], submission["mission_version"])
+            mission = active_mission(db, tx, actor, submission["mission_id"], submission["mission_version"])
+            require(not mission.get("evaluating_submission_id"), 409, "Mission is being evaluated")
         rate_ref, rate = quota(db, tx, actor, time)
+        if submission["mission_id"]:
+            write(db, tx, "missions", submission["mission_id"], {"evaluating_submission_id": submission_id}, merge=True)
         queue(db, tx, job_id, outbox["generation"] + 1, time)
         write(db, tx, "jobs", job_id, {"status": "queued", "stage": "queued", "lease_token": None,
                                        "lease_until": None}, merge=True)
@@ -182,4 +225,4 @@ def retry_submission(actor, submission_id, key):
         remember(tx, idem, payload, response, time)
         return response
 
-    return run(db.transaction())
+    return transaction(db, run)

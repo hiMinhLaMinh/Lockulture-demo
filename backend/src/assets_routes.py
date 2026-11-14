@@ -14,6 +14,7 @@ from fastapi import APIRouter, File, Header, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .missions.location import CaptureLocation
 from .firebase import get_db
 from .image_upload import store_image
 from .platform_routes import Actor
@@ -41,6 +42,10 @@ class SubmissionInput(Input):
     evaluation_session_id: UUID | None
     expected_previous_submission_id: UUID | None
 
+    capture_location: CaptureLocation | None = None
+    souvenir_opt_in: bool = False
+    portrait_asset_id: UUID | None = None
+
     @model_validator(mode="after")
     def validate_context(self):
         if (self.mode == "mission") != (self.mission_id is not None and self.mission_version is not None):
@@ -49,6 +54,10 @@ class SubmissionInput(Input):
             raise ValueError("Free mode cannot specify a mission")
         if (self.evaluation_session_id is None) != (self.expected_previous_submission_id is None):
             raise ValueError("Continuation requires both session and previous submission")
+        if self.mode == "mission" and self.capture_location is None:
+            raise ValueError("Mission requires capture GPS")
+        if self.portrait_asset_id and not self.souvenir_opt_in:
+            raise ValueError("Portrait requires souvenir consent")
         return self
 
 

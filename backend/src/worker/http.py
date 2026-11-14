@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..award import SCHEMAS, award_result, finish_failure
 from ..firebase import get_db
 from ..image_upload import remove_object
-from ..jobs import CONFIG, can_retry, queue, read, write
+from ..jobs import transaction, CONFIG, can_retry, queue, read, write
 from ..social.core import SocialError, now, require
 from .fixture_worker import fixture_assessment
 
@@ -61,23 +61,26 @@ def claim(db, job_id, generation):
             return None
         if job["status"] == "running" and job["lease_until"] > time:
             return None
-        submission = read(db, "submissions", job["submission_id"], tx)
-        session = read(db, "evaluation_sessions", submission["evaluation_session_id"], tx)
-        if session["expires_at"] <= time:
-            write(db, tx, "evaluation_sessions", submission["evaluation_session_id"], {"status": "expired"}, merge=True)
-            finish_failure(db, tx, job, "session_closed", "Evaluation session expired")
-            return None
+        submission = None
+        if job.get("kind", "submission") == "submission":
+            submission = read(db, "submissions", job["submission_id"], tx)
+            session = read(db, "evaluation_sessions", submission["evaluation_session_id"], tx)
+            if session["expires_at"] <= time:
+                finish_failure(db, tx, job, "session_closed", "Evaluation session expired")
+                write(db, tx, "evaluation_sessions", submission["evaluation_session_id"], {"status": "expired"}, merge=True)
+                return None
         if not can_retry(job, time):
             finish_failure(db, tx, job, "deadline_exceeded", "Job deadline, attempts or budget exhausted")
             return None
         lease = str(uuid4())
-        write(db, tx, "jobs", job_id, {"status": "running", "stage": "evaluating", "lease_token": lease,
+        write(db, tx, "jobs", job_id, {"status": "running", "stage": "finding" if job.get("kind") == "mission_search" else "evaluating", "lease_token": lease,
                                       "lease_until": time + timedelta(seconds=150),
                                       "attempts": job["attempts"] + 1}, merge=True)
-        write(db, tx, "submissions", submission["id"], {"status": "running"}, merge=True)
+        if submission:
+            write(db, tx, "submissions", submission["id"], {"status": "running"}, merge=True)
         return lease, submission, job.get("checkpoint")
 
-    return run(db.transaction())
+    return transaction(db, run)
 
 
 def process_delivery(db, job_id, generation):
@@ -87,24 +90,50 @@ def process_delivery(db, job_id, generation):
     lease, submission, checkpoint = claimed
 
     @transactional
-    def save(tx, assessment, failed=False):
+    def save(tx, assessment, failed=False, failure_code="provider_failed"):
         job = read(db, "jobs", job_id, tx)
-        if job["status"] != "running" or job["lease_token"] != lease or job["lease_until"] <= now():
+        if job["status"] != "running" or job["lease_token"] != lease or job["lease_until"] <= now() or job["deadline"] <= now():
             return False
         if failed:
-            finish_failure(db, tx, job, "provider_failed", "Assessment could not be completed")
+            finish_failure(db, tx, job, failure_code, "Job could not be completed", can_retry(job, now()))
             return False
         write(db, tx, "jobs", job_id, {"checkpoint": assessment, "stage": "persisting"}, merge=True)
         return True
 
     try:
-        assessment = checkpoint if checkpoint is not None else fixture_assessment(db, submission)
-        SCHEMAS[submission["mode"]].validate(assessment)
-        if checkpoint is not None or save(db.transaction(), assessment):
-            award_result(job_id, lease, assessment)
-    except (ValidationError, SocialError, ValueError):
-        logger.warning("Assessment failed for job %s", job_id)
-        save(db.transaction(), None, True)
+        job = read(db, "jobs", job_id)
+        kind = job.get("kind", "submission")
+        if kind == "mission_search":
+            from ..missions.worker import process
+            process(db, job, lease)
+        elif kind == "souvenir":
+            from .souvenir import process
+            process(db, job, lease)
+        else:
+            from .providers import assess
+            from .lease import reserve
+            if submission.get("mission_id"):
+                from ..jobs import active_mission
+                from ..missions.location import check_location
+                from datetime import datetime
+                mission = active_mission(db, None, submission["owner_id"], submission["mission_id"], submission["mission_version"])
+                require(submission.get("location_config_version") == CONFIG["version"] and submission.get("location_check"), 409, "Missing location snapshot")
+                check_location(submission["capture_location"], mission, datetime.fromisoformat(submission["location_check"]["checked_at"].replace("Z", "+00:00")))
+            if checkpoint is None:
+                reserve(db, job_id, lease, "gemini_calls")
+                assessment = assess(db, submission)
+            else:
+                assessment = checkpoint
+            SCHEMAS[submission["mode"]].validate(assessment)
+            if checkpoint is not None or transaction(db, save, assessment):
+                award_result(job_id, lease, assessment)
+    except (GoogleAPICallError, RetryError):
+        raise
+    except Exception as exc:
+        # Provider/validation/import failures are redacted; counters remain consumed.
+        logger.warning("Job processing failed for job %s", job_id)
+        code = "deadline_exceeded" if isinstance(exc, TimeoutError) or getattr(exc, "code", None) == "deadline_exceeded" else "provider_failed"
+        transaction(db, save, None, True, code)
 
 
 @router.post("/jobs/{job_id}", status_code=204, dependencies=[Depends(task_identity)])
@@ -129,7 +158,7 @@ def dispatch_one(db, client, parent, job_id):
                                             "dispatch_after": time + timedelta(seconds=60)}, merge=True)
         return outbox["generation"]
 
-    generation = reserve(db.transaction())
+    generation = transaction(db, reserve)
     if generation is None:
         return False
     audience = os.environ["INTERNAL_AUDIENCE"]
@@ -151,7 +180,7 @@ def dispatch_one(db, client, parent, job_id):
         if outbox.get("dispatch_token") == token and outbox["generation"] == generation:
             write(db, tx, "job_outbox", job_id, {"status": "delivered", "delivered_at": now()}, merge=True)
 
-    delivered(db.transaction())
+    transaction(db, delivered)
     return True
 
 
@@ -189,10 +218,11 @@ def recover(db, job_id):
         queue(db, tx, job_id, outbox["generation"] + 1, time)
         write(db, tx, "jobs", job_id, {"status": "queued", "stage": "queued", "lease_token": None,
                                       "lease_until": None}, merge=True)
-        write(db, tx, "submissions", job["submission_id"], {"status": "queued"}, merge=True)
+        if job.get("kind", "submission") == "submission":
+            write(db, tx, "submissions", job["submission_id"], {"status": "queued"}, merge=True)
         return True
 
-    return run(db.transaction())
+    return transaction(db, run)
 
 
 def clean_assets(db):

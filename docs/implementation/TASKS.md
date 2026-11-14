@@ -13,3 +13,12 @@ Nguồn phân công hiện hành là [TEAM_WORK_PLAN](../TEAM_WORK_PLAN.md), ch�
 Đọc chi tiết phạm vi, ranh giới sở hữu, cổng bàn giao và rủi ro trong tài liệu phân công. API/schema vẫn theo [contract](../../contracts/README.md), luật theo [DECISIONS](DECISIONS.md); không thay chúng chỉ vì mock thuận tiện hơn.
 
 Mỗi PR ghi commit, phần đã thực thi, tests pass/fail/skipped, fixture còn dùng và công việc tiếp theo. Cập nhật CURRENT_STATE khi runtime thay đổi. Không tự đánh dấu hoàn tất từ việc route tồn tại hoặc test in-memory pass; Emulator và live cần bằng chứng riêng.
+
+
+## Sprint60 — contract 1.1.0
+
+Mission requires native capture GPS at intake: radius 150m, accuracy <=50m, age <=60s, future <=5s. This supersedes the previous no-GPS mission rule; it is not anti-spoof protection. Free mode is unchanged. Persist the immutable location/config/mission-version snapshot; inference latency does not age it again.
+
+Completion atomically writes the existing +100 ledger/discovery/progress, deterministic earned badge, mission_completions and optional souvenir job/outbox. Read all reservations before writes. Souvenir reserves one image call separately from vision1; checkpoint and asset publication require the current lease. Image failure keeps rewards. Owner-only GET celebration never creates jobs; private attached assets use existing 60s signed URLs.
+
+Search/submission/souvenir workers share dispatch, leases and recovery, with kind-specific counters. Live uses real providers without fixture fallback. See [sprint contract](../sprint60/CONTRACT.md); cloud/native verification remains separate from unit/Emulator checks.

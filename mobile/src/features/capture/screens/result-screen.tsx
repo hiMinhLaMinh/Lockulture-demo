@@ -7,8 +7,12 @@ import { Note, Surface, commonStyles as c } from '@/shared/components/surface';
 import { useCaptureStore } from '@/state/capture-store';
 import { useAppStore } from '@/state/app-store';
 import { colors } from '@/shared/theme/tokens';
+import { ApiDiscovery } from '@/features/social/api/posts';
 import { env } from '@/config/env';
 export default function ResultScreen() {
+  return env.dataSource === 'api' ? <ApiDiscovery /> : <MockResultScreen />;
+}
+function MockResultScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAppStore((s) => s.mockUser);
   const record = useCaptureStore((s) =>

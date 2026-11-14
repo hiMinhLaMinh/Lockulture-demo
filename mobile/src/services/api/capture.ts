@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { z } from 'zod';
 import type { CaptureDraft, Era } from '@/domain/models';
-import { currentActor, tokenFor, useFixtureSession } from '@/features/social/api/session';
+import { currentActor } from '@/features/social/api/session';
 import { requestJson } from './client';
 import { newKey } from './idempotency';
 import { discovery, pageSchema, socialRequest } from './social';
@@ -28,8 +28,13 @@ const submission = z.object({
       'unidentified',
       'out_of_scope',
       'not_matched',
+      'wrong_subject',
+      'out_of_radius',
+      'location_unverified',
     ])
     .nullable(),
+  stage: z.string().optional(),
+  tool_status: z.record(z.string(), z.unknown()).optional(),
   name: z.string().nullable(),
   knowledge: z.string().nullable(),
   instruction: z.string().nullable(),
@@ -40,8 +45,7 @@ const asset = z.object({ id: z.uuid() });
 
 function credentials(actor: string) {
   if (actor !== currentActor()) throw new Error('Phiên đăng nhập đã thay đổi.');
-  const fixture = useFixtureSession.getState().actor;
-  return fixture ? tokenFor(fixture) : undefined;
+  return undefined;
 }
 
 export async function listTimeline(): Promise<Era[]> {
@@ -65,7 +69,36 @@ export async function listTimeline(): Promise<Era[]> {
 }
 
 export function captureKeys() {
-  return { upload: newKey(), submit: newKey(), retry: newKey() };
+  return { upload: newKey(), portraitUpload: newKey(), submit: newKey(), retry: newKey() };
+}
+
+async function uploadPhoto(
+  photo: CaptureDraft['photo'],
+  actor: string,
+  key: string,
+  signal: AbortSignal,
+) {
+  const form = new FormData();
+  if (Platform.OS === 'web') {
+    const response = await fetch(photo.uri, { signal });
+    form.append('photo', await response.blob(), 'capture.jpg');
+  } else {
+    const nativeFile = { uri: photo.uri, name: 'capture.jpg', type: 'image/jpeg' };
+    form.append('photo', nativeFile as unknown as Blob);
+  }
+  return asset.parse(
+    await requestJson(
+      '/assets',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': key },
+        body: form,
+        signal,
+      },
+      credentials(actor),
+      actor,
+    ),
+  );
 }
 
 export async function uploadAndSubmit(
@@ -74,27 +107,11 @@ export async function uploadAndSubmit(
   signal: AbortSignal,
 ) {
   const actor = draft.ownerId;
-  const form = new FormData();
-  if (Platform.OS === 'web') {
-    const response = await fetch(draft.photo.uri, { signal });
-    form.append('photo', await response.blob(), 'capture.jpg');
-  } else {
-    const nativeFile = { uri: draft.photo.uri, name: 'capture.jpg', type: 'image/jpeg' };
-    form.append('photo', nativeFile as unknown as Blob);
-  }
-  const image = asset.parse(
-    await requestJson(
-      '/assets',
-      {
-        method: 'POST',
-        headers: { 'Idempotency-Key': keys.upload },
-        body: form,
-        signal,
-      },
-      credentials(actor),
-      actor,
-    ),
-  );
+  const image = await uploadPhoto(draft.photo, actor, keys.upload, signal);
+  const portrait =
+    draft.souvenirOptIn && draft.portraitPhoto
+      ? await uploadPhoto(draft.portraitPhoto, actor, keys.portraitUpload, signal)
+      : null;
   return socialRequest(
     credentials(actor),
     '/submissions',
@@ -104,6 +121,9 @@ export async function uploadAndSubmit(
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': keys.submit },
       body: JSON.stringify({
         asset_id: image.id,
+        capture_location: draft.captureLocation ?? null,
+        souvenir_opt_in: draft.souvenirOptIn ?? false,
+        portrait_asset_id: portrait?.id ?? null,
         mode: draft.mode,
         mission_id: draft.mission?.id ?? null,
         mission_version: draft.mission?.version ?? null,

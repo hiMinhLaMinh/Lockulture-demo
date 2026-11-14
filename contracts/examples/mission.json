@@ -27,6 +27,25 @@
     "xp": 100,
     "revealed_hints": 0,
     "answer_revealed": false,
-    "status": "active"
+    "status": "active",
+    "arrival_radius_m": 150,
+    "badge_design": {
+      "title": "Ngọ Môn",
+      "motif": "Cổng thành",
+      "era_id": "ERA_NGUYEN"
+    },
+    "heritage": {
+      "summary": "Fixture knowledge for schema validation only.",
+      "fun_facts": [
+        "Fixture fact."
+      ],
+      "era_id": "ERA_NGUYEN",
+      "sources": [
+        {
+          "title": "Fixture source",
+          "url": "https://example.org/heritage"
+        }
+      ]
+    }
   }
 }

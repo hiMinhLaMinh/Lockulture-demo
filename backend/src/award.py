@@ -1,14 +1,15 @@
 """Persist an assessment and all of its effects under the current worker lease."""
 import json
 from pathlib import Path
-from uuid import uuid4
+from uuid import uuid4, uuid5, NAMESPACE_URL
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 from google.cloud.firestore import transactional
 from jsonschema import Draft202012Validator
 
 from .firebase import get_db
-from .jobs import CONFIG, active_mission, read, write
+from .jobs import transaction, CONFIG, active_mission, read, write, queue
 from .social.core import SocialError, digest, normalized, now, timestamp
 
 SCHEMAS = {
@@ -23,11 +24,20 @@ def error_detail(code, message, retryable=False):
 
 
 def finish_failure(db, tx, job, code, message, retryable=False):
+    # Gather every dependent read before the first write, including mission lock.
+    kind = job.get("kind", "submission")
+    sub = read(db, "submissions", job["submission_id"], tx) if kind == "submission" else None
+    mission = read(db, "missions", sub["mission_id"], tx) if sub and sub.get("mission_id") else None
+    profile = read(db, "profiles", job["owner_id"], tx) if kind == "mission_search" else None
+    error = error_detail(code, message, retryable)
     write(db, tx, "jobs", job["id"], {"status": "failed", "stage": "done", "lease_token": None,
-                                     "lease_until": None}, merge=True)
-    write(db, tx, "submissions", job["submission_id"], {
-        "status": "failed", "error": error_detail(code, message, retryable),
-    }, merge=True)
+                                     "lease_until": None, "error": error, "updated_at": now()}, merge=True)
+    if sub:
+        write(db, tx, "submissions", sub["id"], {"status": "failed", "error": error}, merge=True)
+    if mission and mission.get("evaluating_submission_id") == sub["id"]:
+        write(db, tx, "missions", sub["mission_id"], {"evaluating_submission_id": None}, merge=True)
+    if profile and profile.get("active_search_id") == job["id"]:
+        write(db, tx, "profiles", job["owner_id"], {"active_search_id": None}, merge=True)
 
 
 def award_result(job_id: str, lease_token: str, assessment: dict) -> bool:
@@ -45,9 +55,9 @@ def award_result(job_id: str, lease_token: str, assessment: dict) -> bool:
         session_id = sub["evaluation_session_id"]
         session = read(db, "evaluation_sessions", session_id, tx)
         if session["expires_at"] <= time or session["last_submission_id"] != sub["id"]:
+            finish_failure(db, tx, job, "session_closed", "Evaluation session has expired or changed")
             if session["expires_at"] <= time:
                 write(db, tx, "evaluation_sessions", session_id, {"status": "expired"}, merge=True)
-            finish_failure(db, tx, job, "session_closed", "Evaluation session has expired or changed")
             return False
         owner = sub["owner_id"]
         mode = sub["mode"]
@@ -59,6 +69,15 @@ def award_result(job_id: str, lease_token: str, assessment: dict) -> bool:
             except SocialError:
                 finish_failure(db, tx, job, "mission_inactive", "Mission is no longer active")
                 return False
+        if mission:
+            from .missions.location import check_location
+            # Recheck against intake time, not inference completion time.
+            from datetime import datetime
+            check = sub.get("location_check")
+            if not check or sub.get("location_config_version") != CONFIG["version"]:
+                finish_failure(db, tx, job, "validation_error", "Missing location snapshot")
+                return False
+            check_location(sub["capture_location"], mission, datetime.fromisoformat(check["checked_at"].replace("Z", "+00:00")))
         verdict = assessment["verdict"]
         discovery = None
         if verdict in {"accepted", "completed"}:
@@ -71,6 +90,8 @@ def award_result(job_id: str, lease_token: str, assessment: dict) -> bool:
         instruction = assessment["instruction"]
         if status == "closed" and verdict in {"retake_required", "unidentified"}:
             instruction = "Phiên đã đủ bốn ảnh. Hãy bắt đầu phiên mới."
+        if mission:
+            write(db, tx, "missions", sub["mission_id"], {"evaluating_submission_id": None}, merge=True)
         write(db, tx, "evaluation_sessions", session_id, {"status": status}, merge=True)
         write(db, tx, "submissions", sub["id"], {
             "status": "succeeded", "verdict": verdict, "name": assessment["name"],
@@ -81,7 +102,7 @@ def award_result(job_id: str, lease_token: str, assessment: dict) -> bool:
                                       "lease_token": None, "lease_until": None}, merge=True)
         return True
 
-    return run(db.transaction())
+    return transaction(db, run)
 
 
 def grant_discovery(db, tx, sub, mission, assessment, time):
@@ -113,6 +134,22 @@ def grant_discovery(db, tx, sub, mission, assessment, time):
     ledger = read(db, "reward_ledger", ledger_id, tx)
     progress_id = digest([owner, era_id])
     progress = (read(db, "era_progress", progress_id, tx) or {}) if era_id else {}
+    completion = None
+    if mission:
+        badge_id = str(uuid5(NAMESPACE_URL, "lockulture:badge:" + owner + ":" + mission_id))
+        souvenir_id = str(uuid5(NAMESPACE_URL, "lockulture:souvenir:" + discovery_id)) if sub.get("souvenir_opt_in") else None
+        # Deterministic reservations are read before ANY reward write.
+        for collection, ident in (("earned_badges", badge_id), ("mission_completions", discovery_id),
+                                  ("jobs", souvenir_id), ("job_outbox", souvenir_id)):
+            if ident:
+                reserved = read(db, collection, ident, tx)
+                if reserved:
+                    raise ValueError("Completion reservation already exists")
+        session = read(db, "evaluation_sessions", sub["evaluation_session_id"], tx)
+        completion = {"schema_version": 1, "owner_id": owner, "mission_id": mission_id,
+                      "badge_id": badge_id, "heritage": mission["heritage"],
+                      "souvenir_job_id": souvenir_id, "evidence_asset_ids": session["asset_ids"][:sub["sequence"]],
+                      "portrait_asset_id": sub.get("portrait_asset_id"), "consent": sub.get("souvenir_opt_in", False)}
     subjects = progress.get("subject_keys", [])
     fragment = bool(era_id and subject not in subjects and len(subjects) < CONFIG["fragment_goal"])
     if ledger and mission:
@@ -140,6 +177,21 @@ def grant_discovery(db, tx, sub, mission, assessment, time):
             "fragment_count": len(subjects) + 1, "discovery_ids": [*progress.get("discovery_ids", []), discovery_id],
         })
     if mission:
+        write(db, tx, "earned_badges", badge_id, {"schema_version": 1, "id": badge_id,
+              "owner_id": owner, "mission_id": mission_id, "place_id": mission["place_id"],
+              **mission["badge_design"], "earned_at": time})
+        write(db, tx, "mission_completions", discovery_id, completion)
+        for evidence_id in completion["evidence_asset_ids"]:
+            write(db, tx, "assets", evidence_id, {"state": "attached"}, merge=True)
+        if completion["portrait_asset_id"]:
+            write(db, tx, "assets", completion["portrait_asset_id"], {"state": "attached"}, merge=True)
+        if souvenir_id:
+            write(db, tx, "jobs", souvenir_id, {"schema_version": 1, "id": souvenir_id,
+                  "kind": "souvenir", "owner_id": owner, "discovery_id": discovery_id,
+                  "status": "queued", "stage": "queued", "attempts": 0, "image_calls": 0,
+                  "created_at": time, "updated_at": time, "checkpoint": None,
+                  "deadline": time + timedelta(seconds=CONFIG["job_deadline_seconds"])})
+            queue(db, tx, souvenir_id, 1, time)
         write(db, tx, "missions", mission_id, {"status": "completed", "completed_at": time}, merge=True)
         profile_updates["active_mission_id"] = None
     if profile_updates:

@@ -2,6 +2,7 @@ import os
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request, Response
+from google.api_core.exceptions import GoogleAPICallError, RetryError
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -13,6 +14,7 @@ from .firestore_repo import load_firebase_social_services
 from .platform_routes import router as platform_router
 from .assets_routes import router as assets_router
 from .worker.http import router as worker_router
+from .missions.service import router as missions_router
 
 
 def create_app(*, social=None):
@@ -54,6 +56,11 @@ def create_app(*, social=None):
         field = ".".join(map(str, error.errors()[0]["loc"]))
         return envelope(422, "validation_error", f"Invalid request field: {field}")
 
+    @app.exception_handler(GoogleAPICallError)
+    @app.exception_handler(RetryError)
+    def storage_error(_: Request, error: Exception):
+        return envelope(503, "provider_failed", "Storage temporarily unavailable")
+
     @app.exception_handler(Exception)
     def internal_error(_: Request, error: Exception):
         return envelope(500, "internal_error", "Internal server error")
@@ -75,6 +82,7 @@ def create_app(*, social=None):
         app.include_router(assets_router)
         app.include_router(platform_router)
         app.include_router(router)
+    app.include_router(missions_router)
     app.include_router(worker_router)
     return app
 

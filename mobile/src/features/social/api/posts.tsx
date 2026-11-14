@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image } from 'expo-image';
+import { AssetImage } from './asset-image';
+import { Celebration } from '@/features/missions/components/celebration';
 import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { ApiError } from '@/services/api/client';
 import {
-  assetUrl,
   comment,
   discovery,
   group,
@@ -29,41 +29,6 @@ import { useFirebaseSession, useFixtureSession } from './session';
 
 type Post = z.infer<typeof post>;
 const reactions = { heart: '❤️', clap: '👏', wow: '😮' };
-
-function AssetImage({ id, postId }: { id: string; postId?: string }) {
-  const path = `/assets/${id}/url${postId ? `?post_id=${postId}` : ''}`;
-  const url = useSocialQuery(path, assetUrl);
-  const [expired, setExpired] = useState<string>();
-  const { data, refetch } = url;
-  useRefreshOnFocus(refetch);
-
-  useEffect(() => {
-    if (!data) return;
-    const remaining = Date.parse(data.expires_at) - Date.now();
-    const timer = setTimeout(
-      () => {
-        setExpired(data.url);
-        void refetch();
-      },
-      Math.max(remaining, 0),
-    );
-    return () => clearTimeout(timer);
-  }, [data, refetch]);
-
-  return (
-    <QueryView query={url}>
-      {data && data.url !== expired && (
-        <Image
-          accessibilityLabel="Ảnh khám phá"
-          source={data.url}
-          cachePolicy="none"
-          contentFit="cover"
-          style={{ aspectRatio: 4 / 3, width: '100%', borderRadius: 14 }}
-        />
-      )}
-    </QueryView>
-  );
-}
 
 export function PostCard({ row, detail = false }: { row: Post; detail?: boolean }) {
   return (
@@ -230,6 +195,7 @@ export function ApiDiscovery() {
             <ComposeAction id={query.data.id} />
           </Surface>
         )}
+        {query.data?.mode === 'mission' ? <Celebration discoveryId={query.data.id} /> : null}
       </QueryView>
     </Page>
   );

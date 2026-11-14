@@ -37,3 +37,12 @@
 - Job deadline 10 phút; tối đa 3 delivery attempts; signed read URL 60 giây; idempotency response giữ 7 ngày. Các hằng số do config version quản lý; đổi luật phải cập nhật fixtures/tests.
 
 Mobile chỉ gọi Firebase trực tiếp cho Auth. Firestore và Storage chỉ do FastAPI/Admin SDK truy cập, actor lấy từ ID token. Admin SDK bỏ qua Security Rules; backend tự kiểm quyền. Bucket dùng tên thật trong STORAGE_BUCKET, prefix discoveries nếu cần; không giả tên bucket luôn là discoveries.
+
+
+## Sprint60 — contract 1.1.0
+
+Mission requires native capture GPS at intake: radius 150m, accuracy <=50m, age <=60s, future <=5s. This supersedes the previous no-GPS mission rule; it is not anti-spoof protection. Free mode is unchanged. Persist the immutable location/config/mission-version snapshot; inference latency does not age it again.
+
+Completion atomically writes the existing +100 ledger/discovery/progress, deterministic earned badge, mission_completions and optional souvenir job/outbox. Read all reservations before writes. Souvenir reserves one image call separately from vision1; checkpoint and asset publication require the current lease. Image failure keeps rewards. Owner-only GET celebration never creates jobs; private attached assets use existing 60s signed URLs.
+
+Search/submission/souvenir workers share dispatch, leases and recovery, with kind-specific counters. Live uses real providers without fixture fallback. See [sprint contract](../sprint60/CONTRACT.md); cloud/native verification remains separate from unit/Emulator checks.

@@ -45,7 +45,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Cho phép Lockulture tìm nhiệm vụ quanh vị trí của bạn."
+          "locationWhenInUsePermission": "Cho phép Lockulture tìm nhiệm vụ gần bạn và xác minh vị trí khi chụp hoàn thành."
         }
       ],
       "expo-secure-store"

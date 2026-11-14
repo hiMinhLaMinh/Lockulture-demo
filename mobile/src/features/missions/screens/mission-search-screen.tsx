@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { LocationInput } from '@/features/missions/components/location-input';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Page } from '@/shared/components/page';
 import { Action } from '@/shared/components/action';
 import { Surface, Note, commonStyles as c } from '@/shared/components/surface';
 import { colors } from '@/shared/theme/tokens';
-import { eraFixtures } from '@/mocks/fixtures';
+import { useQuery } from '@tanstack/react-query';
+import { useActorId } from '@/features/social/api/session';
 import { env } from '@/config/env';
+import { getActiveMission } from '@/services/api/missions';
 import { services } from '@/services';
 import { useAppStore } from '@/state/app-store';
-import type { Coordinates, MissionSearchInput, MissionSearchStage } from '@/domain/models';
+import type { Coordinates, MissionSearchStage } from '@/domain/models';
 
 const stages: Record<MissionSearchStage, string> = {
+  queued: 'Đang chờ xử lý…',
+  evaluating: 'Đang đánh giá…',
+  persisting: 'Đang lưu…',
+  done: 'Đã xử lý',
   finding: 'Đang tìm mục tiêu quanh bạn…',
   reviewing: 'Đang chọn địa điểm phù hợp…',
   preparing: 'Đang chuẩn bị mật thư và gợi ý…',
@@ -21,28 +27,43 @@ const stages: Record<MissionSearchStage, string> = {
 export default function MissionSearchScreen() {
   const params = useLocalSearchParams<{ eraId?: string; replaceId?: string }>();
   const eraId = typeof params.eraId === 'string' ? params.eraId : undefined;
-  const era = eraFixtures.find((e) => e.id === eraId);
-  const active = useAppStore((s) => s.activeMission);
+  const actor = useActorId();
+  const { data: eras } = useQuery({
+    queryKey: ['timeline', actor],
+    queryFn: services.exploration.listEras,
+  });
+  const era = eras?.find((e) => e.id === eraId);
+  const [locationSource, setLocationSource] = useState<'gps' | 'manual'>('gps');
+  const cached = useAppStore((s) => s.activeMission);
+  const activeQuery = useQuery({
+    queryKey: ['mission', actor],
+    queryFn: ({ signal }) => getActiveMission(signal),
+    enabled: !!actor && env.dataSource === 'api',
+  });
+  const active = env.dataSource === 'api' ? activeQuery.data : cached;
   const [location, setLocation] = useState<Coordinates | null>(null);
   const [locationName, setLocationName] = useState('Chưa áp dụng vị trí tìm kiếm');
   const [radius, setRadius] = useState(1000);
+  const [searching, setSearching] = useState(false);
   const [stage, setStage] = useState<MissionSearchStage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [empty, setEmpty] = useState(false);
   const locating = false;
-  const [debug, setDebug] = useState(false);
-  const [scenario, setScenario] = useState<MissionSearchInput['scenario']>('success');
   const request = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') request.current?.abort();
+    });
     return () => {
+      listener.remove();
       mounted.current = false;
       request.current?.abort();
     };
   }, []);
-  const busy = !!stage || locating;
-  const invalidEra = !!eraId && !era;
+  const busy = searching || locating;
+  const invalidEra = !!eraId && !!eras && !era;
   const staleReplacement = !!params.replaceId && params.replaceId !== active?.id;
   async function find(nextRadius = radius) {
     if (request.current || !location || invalidEra || staleReplacement) return;
@@ -51,14 +72,16 @@ export default function MissionSearchScreen() {
     const expected = useAppStore.getState().activeMission?.id;
     setError(null);
     setEmpty(false);
+    setSearching(true);
     try {
       const result = await services.missions.search(
         {
           location,
+          locationSource,
+          expectedActiveMissionId: active?.id ?? null,
           radiusMeters: nextRadius,
           eraId,
           excludePlaceId: params.replaceId ? active?.placeId : undefined,
-          scenario,
         },
         controller.signal,
         setStage,
@@ -68,7 +91,7 @@ export default function MissionSearchScreen() {
         setEmpty(true);
         return;
       }
-      if (useAppStore.getState().activeMission?.id !== expected)
+      if (env.dataSource !== 'api' && useAppStore.getState().activeMission?.id !== expected)
         throw new Error('Nhiệm vụ đang hoạt động đã thay đổi. Hãy quay về và kiểm tra lại.');
       useAppStore.getState().setMission(result.mission);
       router.replace({ pathname: '/(main)/missions/[id]', params: { id: result.mission.id } });
@@ -77,7 +100,10 @@ export default function MissionSearchScreen() {
         setError(e instanceof Error ? e.message : 'Chưa thể tìm nhiệm vụ. Hãy thử lại.');
     } finally {
       request.current = null;
-      if (mounted.current) setStage(null);
+      if (mounted.current) {
+        setStage(null);
+        setSearching(false);
+      }
     }
   }
   return (
@@ -96,7 +122,6 @@ export default function MissionSearchScreen() {
           <Surface>
             <View style={c.row}>
               <Text style={c.title}>{era?.name ?? 'Mọi thời kỳ'}</Text>
-              <Text style={styles.reward}>Thưởng 100 XP</Text>
             </View>
             <Note>
               {era
@@ -112,7 +137,8 @@ export default function MissionSearchScreen() {
             </View>
             <LocationInput
               disabled={busy}
-              onChange={(point, label) => {
+              onChange={(point, label, source) => {
+                setLocationSource(source);
                 setLocation(point);
                 setLocationName(label);
                 setEmpty(false);
@@ -146,18 +172,25 @@ export default function MissionSearchScreen() {
           {active && (
             <Note>Nhiệm vụ “{active.placeName}” vẫn được giữ cho đến khi có nhiệm vụ mới.</Note>
           )}
+          {searching && !stage ? <Note>Đang gửi yêu cầu tìm kiếm…</Note> : null}
           {stage && (
             <Surface>
               <Text accessibilityLiveRegion="polite" style={c.title}>
                 {stages[stage]}
               </Text>
-              <Note>
-                {env.dataSource === 'mock'
-                  ? 'Đang chạy tình huống dữ liệu mẫu.'
-                  : 'Bạn có thể quay lại để dừng lượt tìm.'}
-              </Note>
+              <Note>Bạn có thể quay lại để dừng lượt tìm.</Note>
             </Surface>
           )}
+          {activeQuery.error ? (
+            <>
+              <Note error>Chưa xác nhận được nhiệm vụ đang hoạt động từ server.</Note>
+              <Action
+                secondary
+                label="Tải lại nhiệm vụ đang hoạt động"
+                onPress={() => void activeQuery.refetch()}
+              />
+            </>
+          ) : null}
           {error && <Note error>{error}</Note>}
           {empty && (
             <Surface>
@@ -184,8 +217,12 @@ export default function MissionSearchScreen() {
           )}
           <Action
             label={stage ? 'Đang tìm nhiệm vụ…' : error ? 'Thử tìm lại' : 'Tìm nhiệm vụ tại đây'}
-            loading={!!stage}
-            disabled={locating || !location}
+            loading={searching}
+            disabled={
+              busy ||
+              !location ||
+              (env.dataSource === 'api' && (activeQuery.isPending || !!activeQuery.error))
+            }
             onPress={() => void find()}
           />
           {active && (
@@ -202,39 +239,6 @@ export default function MissionSearchScreen() {
             label="Chụp khám phá tự do"
             href={{ pathname: '/(main)/capture/camera', params: { mode: 'free' } }}
           />
-          {env.dataSource === 'mock' && (
-            <Note>
-              Dữ liệu mẫu quanh Huế, gồm Triều Nguyễn và Cận – hiện đại. Chưa gọi Maps/Gemini; các
-              thời kỳ khác có thể chưa có mục tiêu.
-            </Note>
-          )}
-          {__DEV__ && env.dataSource === 'mock' && (
-            <View style={styles.section}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setDebug(!debug)}
-                style={styles.debug}
-              >
-                <Text style={c.label}>{debug ? 'Ẩn tình huống thử' : 'Tình huống thử'}</Text>
-              </Pressable>
-              {debug &&
-                (['success', 'empty', 'error'] as const).map((value) => (
-                  <Action
-                    key={value}
-                    secondary={scenario !== value}
-                    disabled={busy}
-                    label={
-                      {
-                        success: 'Tìm bình thường',
-                        empty: 'Không có kết quả',
-                        error: 'Lỗi dịch vụ',
-                      }[value]
-                    }
-                    onPress={() => setScenario(value)}
-                  />
-                ))}
-            </View>
-          )}
         </>
       )}
     </Page>

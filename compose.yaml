@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: lockulture-backend
+    command: ["python", "-m", "src.media.start"]
     env_file:
       - ./backend/.env
     ports:
@@ -12,15 +13,12 @@ services:
       - PORT=8080
       - ENV=development
       - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
-      - STORAGE_TYPE=local
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
     volumes:
       - ./backend/src:/app/src
       - ./backend/service-account.json:/app/service-account.json:ro
       - uploads_data:/app/uploads
     restart: unless-stopped
+    # Real provider/job configuration comes from backend/.env, without root-env overrides.
 
 volumes:
   uploads_data:

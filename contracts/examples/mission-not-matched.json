@@ -15,6 +15,7 @@
     "knowledge": null,
     "instruction": "Hãy chụp đúng cổng theo yêu cầu.",
     "discovery": null,
-    "error": null
+    "error": null,
+    "location_check": null
   }
 }

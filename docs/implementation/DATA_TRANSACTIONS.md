@@ -49,3 +49,12 @@ MVP có thể quét posts theo created_at DESC/document ID DESC rồi lọc ACL 
 Thành viên dữ liệu phải tạo firestore.indexes.json từ query thực tế (owner+created_at, post+created_at, participant/status, job status/deadline), kiểm Emulator và staging, commit indexes cùng query. Chưa có bộ index được kiểm chứng ở đợt tài liệu này.
 
 Cleanup đánh dấu asset deleting dưới transaction, xóa object ngoài transaction rồi đánh dấu deleted. Không xóa asset gắn discovery. TTL xóa trễ nên mọi read/retry phải tự kiểm expires_at; không dựa vào TTL để thu hồi quyền hoặc đóng session đúng hạn.
+
+
+## Sprint60 — contract 1.1.0
+
+Mission requires native capture GPS at intake: radius 150m, accuracy <=50m, age <=60s, future <=5s. This supersedes the previous no-GPS mission rule; it is not anti-spoof protection. Free mode is unchanged. Persist the immutable location/config/mission-version snapshot; inference latency does not age it again.
+
+Completion atomically writes the existing +100 ledger/discovery/progress, deterministic earned badge, mission_completions and optional souvenir job/outbox. Read all reservations before writes. Souvenir reserves one image call separately from vision1; checkpoint and asset publication require the current lease. Image failure keeps rewards. Owner-only GET celebration never creates jobs; private attached assets use existing 60s signed URLs.
+
+Search/submission/souvenir workers share dispatch, leases and recovery, with kind-specific counters. Live uses real providers without fixture fallback. See [sprint contract](../sprint60/CONTRACT.md); cloud/native verification remains separate from unit/Emulator checks.

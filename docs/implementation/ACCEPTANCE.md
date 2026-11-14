@@ -35,3 +35,12 @@ Các chi tiết môi trường cần cung cấp lúc triển khai: Firebase proj
 ## Cổng kiểm Firebase
 
 Viết Emulator tests cho duplicate reward, profile/username reservation, concurrent membership/publication, lease takeover và idempotency. Tạo user bằng Firebase Auth Emulator/staging, map UID sang UUID nội bộ. Rules tests phải chứng minh mobile bị từ chối đọc/ghi Firestore/Storage trực tiếp. Backend tests dùng Admin SDK phải kiểm riêng ACL vì Admin bỏ qua rules. Staging kiểm signed URL/IAM/Auth email flows và indexes. Kết quả17tests PostgreSQL trước đây không áp dụng. Chưa có các tests Firebase trong repo ở đợt này.
+
+
+## Sprint60 — contract 1.1.0
+
+Mission requires native capture GPS at intake: radius 150m, accuracy <=50m, age <=60s, future <=5s. This supersedes the previous no-GPS mission rule; it is not anti-spoof protection. Free mode is unchanged. Persist the immutable location/config/mission-version snapshot; inference latency does not age it again.
+
+Completion atomically writes the existing +100 ledger/discovery/progress, deterministic earned badge, mission_completions and optional souvenir job/outbox. Read all reservations before writes. Souvenir reserves one image call separately from vision1; checkpoint and asset publication require the current lease. Image failure keeps rewards. Owner-only GET celebration never creates jobs; private attached assets use existing 60s signed URLs.
+
+Search/submission/souvenir workers share dispatch, leases and recovery, with kind-specific counters. Live uses real providers without fixture fallback. See [sprint contract](../sprint60/CONTRACT.md); cloud/native verification remains separate from unit/Emulator checks.

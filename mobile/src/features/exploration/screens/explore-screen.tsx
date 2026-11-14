@@ -13,15 +13,23 @@ import { useAppStore } from '@/state/app-store';
 import { EraTimeline } from '@/features/exploration/components/era-timeline';
 import { EraDetail } from '@/features/exploration/components/era-detail';
 
+import { getActiveMission } from '@/services/api/missions';
+import { useRefreshOnFocus } from '@/features/social/api/hooks';
 import { env } from '@/config/env';
 import { useActorId } from '@/features/social/api/session';
 export default function ExploreScreen() {
+  const actor = useActorId();
   const mockMission = useAppStore((s) => s.activeMission);
-  const activeMission = env.dataSource === 'mock' ? mockMission : null;
+  const missionQuery = useQuery({
+    queryKey: ['mission', actor],
+    queryFn: ({ signal }) => getActiveMission(signal),
+    enabled: env.dataSource === 'api' && !!actor,
+  });
+  useRefreshOnFocus(missionQuery.refetch);
+  const activeMission = env.dataSource === 'mock' ? mockMission : missionQuery.data;
   const selected = useAppStore((s) => s.selectedEraId);
   const selectEra = useAppStore((s) => s.selectEra);
   const user = useAppStore((s) => s.mockUser);
-  const actor = useActorId();
   const {
     data: baseEras,
     isPending,
@@ -70,6 +78,9 @@ export default function ExploreScreen() {
           </Link>
         </View>
         <View style={styles.headerDivider} />
+        {missionQuery.error ? (
+          <Text style={styles.error}>Chưa tải được nhiệm vụ. Hãy mở lại Khám phá.</Text>
+        ) : null}
         {activeMission && (
           <View style={{ marginBottom: 22 }}>
             <Surface>

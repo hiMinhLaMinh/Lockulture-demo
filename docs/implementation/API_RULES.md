@@ -47,3 +47,25 @@ Không trả stack trace/secret. FastAPI RequestValidationError và HTTPExceptio
 - XP trong User response phải lấy từ ledger cùng nguồn với /me/leaderboard. Chia sẻ/comment/reaction không ảnh hưởng ledger.
 
 Job/Submission dùng field `error: ErrorDetail | null` trực tiếp, không lồng `{error:{error:...}}`. HTTP lỗi bên ngoài dùng envelope Error. getActiveMission trả200 JSON null khi không có; không dùng404. Job.resource_id khi search succeeded là mission ID; no_result không có ID, UI dùng thông báo không tìm được nhiệm vụ. GET users/friends không trả email hay quan hệ suy đoán; UI kết hợp friends/request collections để hiển thị nút quan hệ, tải đủ trang cần thiết.
+
+
+## Sprint60 — contract 1.1.0
+
+Mission requires native capture GPS at intake: radius 150m, accuracy <=50m, age <=60s, future <=5s. This supersedes the previous no-GPS mission rule; it is not anti-spoof protection. Free mode is unchanged. Persist the immutable location/config/mission-version snapshot; inference latency does not age it again.
+
+Completion atomically writes the existing +100 ledger/discovery/progress, deterministic earned badge, mission_completions and optional souvenir job/outbox. Read all reservations before writes. Souvenir reserves one image call separately from vision1; checkpoint and asset publication require the current lease. Image failure keeps rewards. Owner-only GET celebration never creates jobs; private attached assets use existing 60s signed URLs.
+
+Search/submission/souvenir workers share dispatch, leases and recovery, with kind-specific counters. Live uses real providers without fixture fallback. See [sprint contract](../sprint60/CONTRACT.md); cloud/native verification remains separate from unit/Emulator checks.
+
+Search live additionally requires `MISSION_SOURCE_CONTEXT_FILE`, a server-local JSON
+array of operator-reviewed place records keyed by real Places `place_id`. Each record
+contains `verified: true`, canonical `era_id`, `summary`, nonempty `fun_facts`, `motif`,
+and nonempty `sources` (`title`, HTTPS `url`). The worker snapshots these records for
+matching Places candidates; it never fetches arbitrary URLs from a model/client.
+Missing or invalid configuration returns 503 before creating a search. This file is
+operator input, not bundled demo history or a fallback for Places/Gemini.
+
+Existing missions without the 1.1.0 heritage/badge fields require a new search;
+there is no automatic historical-data backfill. Drain old inflight submissions
+before switching versions: old submissions without the GPS/config snapshot cannot
+complete a mission under the new rules. Never delete rewards to replay a demo.

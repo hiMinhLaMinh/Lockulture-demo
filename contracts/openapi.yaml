@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Lockulture implementation contract
-  version: 1.0.0
-  description: Normative target contract, not current FastAPI runtime. Firebase Auth flows are SDK calls documented
-    separately.
+  version: 1.1.0
+  description: Normative target contract, not current FastAPI runtime. Firebase Auth
+    flows are SDK calls documented separately.
 servers:
 - url: http://localhost:8080/api/v1
 security:
@@ -30,8 +30,8 @@ paths:
   /me:
     get:
       operationId: getMe
-      description: Upsert profile on first verified request; deterministic username u_<first20 hex UUID>, display
-        name from signup metadata or Lữ khách.
+      description: Upsert profile on first verified request; deterministic username
+        u_<first20 hex UUID>, display name from signup metadata or Lữ khách.
       responses:
         '200':
           description: Success
@@ -206,7 +206,8 @@ paths:
   /missions/active:
     get:
       operationId: getActiveMission
-      description: Return own active mission, or JSON null when none. Does not activate or create a mission.
+      description: Return own active mission, or JSON null when none. Does not activate
+        or create a mission.
       responses:
         '200':
           description: Success
@@ -249,7 +250,8 @@ paths:
   /missions/{mission_id}/hints:
     post:
       operationId: revealHint
-      description: 'CAS: increase by one if expected matches; no model call, no XP penalty.'
+      description: 'CAS: increase by one if expected matches; no model call, no XP
+        penalty.'
       responses:
         '200':
           description: Success
@@ -353,8 +355,8 @@ paths:
   /assets/{asset_id}/url:
     get:
       operationId: getAssetUrl
-      description: 'Owner or authorized post_id whose asset matches. 60-second signed URL; response Cache-Control:
-        no-store.'
+      description: 'Owner or authorized post_id whose asset matches. 60-second signed
+        URL; response Cache-Control: no-store.'
       responses:
         '200':
           description: Success
@@ -433,8 +435,9 @@ paths:
   /submissions/{submission_id}/retry:
     post:
       operationId: retrySubmission
-      description: Retry only a failed submission marked retryable, within deadline/attempt limits, with unused
-        provider budget or persisted checkpoint. Keep the same submission/session/asset.
+      description: Retry only a failed submission marked retryable, within deadline/attempt
+        limits, with unused provider budget or persisted checkpoint. Keep the same
+        submission/session/asset.
       responses:
         '202':
           description: Success
@@ -909,7 +912,8 @@ paths:
   /groups/{group_id}/members/{user_id}:
     delete:
       operationId: removeMember
-      description: 'Owner removes non-owner, or actor removes self. Owner cannot leave: dissolve group instead.'
+      description: 'Owner removes non-owner, or actor removes self. Owner cannot leave:
+        dissolve group instead.'
       responses:
         '204':
           description: Success
@@ -960,8 +964,8 @@ paths:
               $ref: '#/components/schemas/PostInput'
     get:
       operationId: listPosts
-      description: Global union own + direct + live group grants, dedupe by post ID. group_id additionally requires
-        current membership and live group share snapshot.
+      description: Global union own + direct + live group grants, dedupe by post ID.
+        group_id additionally requires current membership and live group share snapshot.
       responses:
         '200':
           description: Success
@@ -1220,7 +1224,8 @@ paths:
   /comments/{comment_id}:
     delete:
       operationId: deleteComment
-      description: Comment author only, even after post read permission revoked; no content returned.
+      description: Comment author only, even after post read permission revoked; no
+        content returned.
       responses:
         '204':
           description: Success
@@ -1263,6 +1268,30 @@ paths:
           type: string
           const: friends
           default: friends
+  /discoveries/{discovery_id}/celebration:
+    get:
+      operationId: getCelebration
+      description: Owner-only persisted celebration; GET never starts a job.
+      parameters:
+      - name: discovery_id
+        in: path
+        required: true
+        schema: &id001
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Celebration'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     bearerAuth:
@@ -1277,7 +1306,8 @@ components:
       schema:
         type: string
         format: uuid
-      description: Stable UUID per actor + operation + intent; retain 7 days, conflicting body -> 409.
+      description: Stable UUID per actor + operation + intent; retain 7 days, conflicting
+        body -> 409.
   schemas:
     Error:
       type: object
@@ -1399,6 +1429,7 @@ components:
           enum:
           - mission_search
           - submission
+          - souvenir
         status:
           type: string
           enum:
@@ -1422,8 +1453,8 @@ components:
           - type: string
             format: uuid
           - type: 'null'
-          description: Mission UUID for succeeded mission_search; otherwise null. Submission jobs use submission
-            UUID internally.
+          description: Mission UUID for succeeded mission_search; otherwise null.
+            Submission jobs use submission UUID internally.
         error:
           anyOf:
           - $ref: '#/components/schemas/ErrorDetail'
@@ -1535,6 +1566,13 @@ components:
           - active
           - replaced
           - completed
+        arrival_radius_m:
+          type: integer
+          const: 150
+        badge_design:
+          $ref: '#/components/schemas/BadgeDesign'
+        heritage:
+          $ref: '#/components/schemas/Heritage'
       required:
       - id
       - version
@@ -1552,6 +1590,9 @@ components:
       - revealed_hints
       - answer_revealed
       - status
+      - arrival_radius_m
+      - badge_design
+      - heritage
     Asset:
       type: object
       additionalProperties: false
@@ -1630,6 +1671,17 @@ components:
           - type: string
             format: uuid
           - type: 'null'
+        capture_location:
+          anyOf:
+          - $ref: '#/components/schemas/CaptureLocation'
+          - type: 'null'
+        souvenir_opt_in:
+          type: boolean
+          default: false
+        portrait_asset_id:
+          anyOf:
+          - *id001
+          - type: 'null'
       required:
       - mode
       - asset_id
@@ -1656,6 +1708,10 @@ components:
             mission_version:
               type: integer
               minimum: 1
+            capture_location:
+              $ref: '#/components/schemas/CaptureLocation'
+          required:
+          - capture_location
       - if:
           properties:
             evaluation_session_id:
@@ -1806,6 +1862,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/ErrorDetail'
           - type: 'null'
+        location_check:
+          anyOf:
+          - $ref: '#/components/schemas/LocationCheck'
+          - type: 'null'
       required:
       - id
       - job_id
@@ -1820,6 +1880,7 @@ components:
       - instruction
       - discovery
       - error
+      - location_check
     FriendRequest:
       type: object
       additionalProperties: false
@@ -2272,6 +2333,7 @@ components:
           - provider_failed
           - deadline_exceeded
           - internal_error
+          - location_out_of_range
         message:
           type: string
         retryable:
@@ -2284,3 +2346,154 @@ components:
       - message
       - retryable
       - request_id
+    CaptureLocation:
+      type: object
+      additionalProperties: false
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+        accuracy_m:
+          type: number
+          minimum: 0
+        captured_at: &id002
+          type: string
+          format: date-time
+        source:
+          const: gps
+          type: string
+      required:
+      - latitude
+      - longitude
+      - accuracy_m
+      - captured_at
+      - source
+    LocationCheck:
+      type: object
+      additionalProperties: false
+      properties:
+        within_radius:
+          type: boolean
+        distance_m:
+          type: number
+          minimum: 0
+        radius_m:
+          type: integer
+          minimum: 1
+        accuracy_m:
+          type: number
+          minimum: 0
+        checked_at: *id002
+      required:
+      - within_radius
+      - distance_m
+      - radius_m
+      - accuracy_m
+      - checked_at
+    BadgeDesign:
+      type: object
+      additionalProperties: false
+      properties:
+        title: &id003
+          type: string
+          minLength: 1
+        motif: *id003
+        era_id: &id004
+          $ref: '#/components/schemas/EraId'
+      required:
+      - title
+      - motif
+      - era_id
+    Heritage:
+      type: object
+      additionalProperties: false
+      properties:
+        summary: *id003
+        fun_facts:
+          type: array
+          items: *id003
+          minItems: 1
+        era_id:
+          $ref: '#/components/schemas/EraId'
+        sources:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              title: *id003
+              url:
+                type: string
+                format: uri
+            required:
+            - title
+            - url
+      required:
+      - summary
+      - fun_facts
+      - era_id
+      - sources
+    EarnedBadge:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        title: *id003
+        motif: *id003
+        era_id: *id004
+        earned_at: *id002
+      required:
+      - id
+      - title
+      - motif
+      - era_id
+      - earned_at
+    Celebration:
+      type: object
+      additionalProperties: false
+      properties:
+        discovery_id: *id001
+        badge:
+          $ref: '#/components/schemas/EarnedBadge'
+        heritage:
+          $ref: '#/components/schemas/Heritage'
+        souvenir:
+          type: object
+          additionalProperties: false
+          properties:
+            job_id:
+              anyOf:
+              - *id001
+              - type: 'null'
+            status:
+              type: string
+              enum:
+              - not_requested
+              - queued
+              - running
+              - succeeded
+              - failed
+            asset_id:
+              anyOf:
+              - *id001
+              - type: 'null'
+            error:
+              anyOf:
+              - $ref: '#/components/schemas/ErrorDetail'
+              - type: 'null'
+          required:
+          - job_id
+          - status
+          - asset_id
+          - error
+      required:
+      - discovery_id
+      - badge
+      - heritage
+      - souvenir

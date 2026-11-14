@@ -30,6 +30,7 @@
       "reward_reason": "granted",
       "created_at": "2026-11-11T02:00:00Z"
     },
-    "error": null
+    "error": null,
+    "location_check": null
   }
 }

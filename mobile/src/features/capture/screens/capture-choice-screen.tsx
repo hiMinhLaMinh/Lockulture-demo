@@ -49,7 +49,12 @@ export default function CaptureChoiceScreen() {
             href={{ pathname: '/(main)/capture/camera', params: { mode: 'free' } }}
           />
         </Surface>
-        {!api ? (
+        {api ? (
+          <Surface>
+            <Text style={c.title}>Khám phá có mục tiêu</Text>
+            <Action label="Mở nhiệm vụ và tìm địa điểm" href="/(main)/missions/search" />
+          </Surface>
+        ) : (
           <Surface>
             <Text style={c.title}>
               {mission ? 'Nhiệm vụ đang khám phá' : 'Khám phá có mục tiêu'}
@@ -82,7 +87,7 @@ export default function CaptureChoiceScreen() {
               />
             )}
           </Surface>
-        ) : null}
+        )}
         <Note>Chỉ xin quyền camera khi bạn mở màn hình chụp.</Note>
       </ScrollView>
     </SafeAreaView>

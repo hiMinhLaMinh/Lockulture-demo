@@ -18,10 +18,13 @@ function parseCoordinates(text: string): Coordinates | null {
     ? { latitude, longitude }
     : null;
 }
-type Props = { disabled: boolean; onChange: (point: Coordinates | null, label: string) => void };
+type Props = {
+  disabled: boolean;
+  onChange: (point: Coordinates | null, label: string, source: 'gps' | 'manual') => void;
+};
 export function LocationInput({ disabled, onChange }: Props) {
-  const [mode, setMode] = useState<'manual' | 'gps'>('manual');
-  const [draft, setDraft] = useState('16.4692, 107.5778');
+  const [mode, setMode] = useState<'manual' | 'gps'>('gps');
+  const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const version = useRef(0);
@@ -47,6 +50,7 @@ export function LocationInput({ disabled, onChange }: Props) {
           : mode === 'manual'
             ? 'Nhập tọa độ hợp lệ để tìm nhiệm vụ'
             : 'Bấm Lấy vị trí hiện tại',
+      mode,
     );
   }, [mode, draft, gpsPoint, loading]);
   const manualInvalid = mode === 'manual' && draft.trim().length > 0 && !parseCoordinates(draft);
@@ -111,7 +115,7 @@ export function LocationInput({ disabled, onChange }: Props) {
               setDraft(text);
               setError('');
             }}
-            placeholder="16.4692, 107.5778"
+            placeholder="Vĩ độ, kinh độ"
             placeholderTextColor={colors.subtle}
             style={{
               fontSize: 16,
@@ -130,15 +134,6 @@ export function LocationInput({ disabled, onChange }: Props) {
               Nhập hai số, vĩ độ từ -90 đến 90 và kinh độ từ -180 đến 180, ngăn bằng dấu phẩy.
             </Note>
           )}
-          <Action
-            secondary
-            disabled={disabled}
-            label="Điền tọa độ mẫu Huế"
-            onPress={() => {
-              setDraft('16.4692, 107.5778');
-              setError('');
-            }}
-          />
         </>
       )}
       {!!error && <Note error>{error}</Note>}

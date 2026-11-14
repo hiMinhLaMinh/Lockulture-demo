@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 const schema = z.object({
-  dataSource: z.enum(['mock', 'api']).default('mock'),
+  dataSource: z.enum(['mock', 'api']).default('api'),
   socialFixtures: z
-    .enum(['0', '1'])
+    .enum(['0'])
     .default('0')
-    .transform((value) => value === '1'),
+    .transform(() => false),
   apiBaseUrl: z.string().url().default('http://localhost:8080/api/v1'),
   firebaseApiKey: z.string().default(''),
   firebaseAuthDomain: z.string().default(''),
@@ -40,3 +40,6 @@ export function requireFirebaseConfig() {
     throw new Error(`Missing Firebase configuration: ${missing.join(', ')}`);
   }
 }
+
+if (env.dataSource !== 'api')
+  throw new Error('Sprint60 yêu cầu API thật; không cho phép chế độ mock.');

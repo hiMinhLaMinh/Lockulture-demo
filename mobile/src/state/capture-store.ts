@@ -9,6 +9,7 @@ import type {
   CaptureMode,
   Mission,
 } from '@/domain/models';
+import { env } from '@/config/env';
 import { eraFixtures } from '@/mocks/fixtures';
 import { captureId } from '@/features/capture/lib/photo';
 export type PostAudience = {
@@ -152,6 +153,8 @@ export const useCaptureStore = create<State>()(
         });
       },
       settle: (draft, result) => {
+        if (env.dataSource === 'api')
+          throw new Error('Kết quả và phần thưởng chỉ được ghi bởi server.');
         const existing = get().records.find(
           (r) => r.id === draft.id && r.ownerId === draft.ownerId,
         );

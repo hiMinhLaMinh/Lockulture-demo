@@ -47,3 +47,12 @@ Response theo assessment schema: verdict, name, knowledge, instruction, category
 Internal contract: Task POST `/internal/jobs/{job_id}` body `{generation: integer>=0}`, OIDC task identity; worker so generation với outbox và return204/no-op nếu cũ/terminal/còn lease worker khác. Scheduler POST `/internal/dispatch` và `/internal/maintenance` body `{}`, OIDC scheduler identity,200 `{processed: integer>=0}`. Deadline/attempt exhausted ghi trạng thái failed rồi204 để không lặp vô hạn; lỗi hạ tầng trước khi ghi DB trả503 để queue retry. Dispatcher xử lý từng job và ghi lỗi/retry DB, không bỏ toàn batch.
 
 Nguồn nền tảng: [Cloud Tasks HTTP/OIDC và task naming](https://docs.cloud.google.com/tasks/docs/creating-http-target-tasks). Lease/checkpoint/counters là thiết kế của Lockulture.
+
+
+## Sprint60 — contract 1.1.0
+
+Mission requires native capture GPS at intake: radius 150m, accuracy <=50m, age <=60s, future <=5s. This supersedes the previous no-GPS mission rule; it is not anti-spoof protection. Free mode is unchanged. Persist the immutable location/config/mission-version snapshot; inference latency does not age it again.
+
+Completion atomically writes the existing +100 ledger/discovery/progress, deterministic earned badge, mission_completions and optional souvenir job/outbox. Read all reservations before writes. Souvenir reserves one image call separately from vision1; checkpoint and asset publication require the current lease. Image failure keeps rewards. Owner-only GET celebration never creates jobs; private attached assets use existing 60s signed URLs.
+
+Search/submission/souvenir workers share dispatch, leases and recovery, with kind-specific counters. Live uses real providers without fixture fallback. See [sprint contract](../sprint60/CONTRACT.md); cloud/native verification remains separate from unit/Emulator checks.

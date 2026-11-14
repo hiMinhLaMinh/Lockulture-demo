@@ -443,6 +443,52 @@
       "when": "Attempt anon/authenticated reads to Firestore collections and public Storage; run orphan cleanup",
       "then": "Client denied; backend authorized; signed TTL works; orphan24h/failed7d cleaned idempotently; attached discovery retained",
       "evidence": "pending implementation"
+    },
+    {
+      "id": "GPS-01",
+      "layer": "http",
+      "operations": [
+        "startSubmission"
+      ],
+      "given": "Active mission and owned image",
+      "when": "Submit missing/stale/future/nonfinite/inaccurate/outside GPS, including boundaries",
+      "then": "422 invalid sample or 409 location_out_of_range; no vision/reward; <=150m/50m/60s/+5s passes",
+      "evidence": "pending runtime verification"
+    },
+    {
+      "id": "BADGE-01",
+      "layer": "http",
+      "operations": [
+        "getCelebration"
+      ],
+      "given": "Completed mission with current lease and valid GPS/vision",
+      "when": "Concurrent completion and redelivery",
+      "then": "Exactly one ledger, badge, completion and optional souvenir job; outsider404; GET never generates",
+      "evidence": "pending runtime verification"
+    },
+    {
+      "id": "IMAGE-01",
+      "layer": "http",
+      "operations": [
+        "getCelebration",
+        "getAssetUrl"
+      ],
+      "given": "Consented souvenir job",
+      "when": "Provider refusal/timeout/crash or checkpoint recovery",
+      "then": "One reserved image call maximum; no fallback; attached private image and fresh URL; failure preserves reward",
+      "evidence": "pending runtime verification"
+    },
+    {
+      "id": "SEARCH-01",
+      "layer": "http",
+      "operations": [
+        "startMissionSearch",
+        "getMissionSearch"
+      ],
+      "given": "Verified historical source and live Places candidates",
+      "when": "Search then retry or no_result",
+      "then": "CAS and budgets enforced; no_result preserves old mission; history/era sourced",
+      "evidence": "pending runtime verification"
     }
   ]
 }

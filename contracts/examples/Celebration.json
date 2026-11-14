@@ -1,0 +1,34 @@
+{
+  "operation_id": "getCelebration",
+  "schema": "Celebration",
+  "valid": true,
+  "data": {
+    "discovery_id": "00000000-0000-4000-8000-000000000010",
+    "badge": {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "title": "Ngọ Môn",
+      "motif": "Cổng thành",
+      "era_id": "ERA_NGUYEN",
+      "earned_at": "2026-11-14T00:00:00Z"
+    },
+    "heritage": {
+      "summary": "Fixture knowledge for schema validation only.",
+      "fun_facts": [
+        "Fixture fact."
+      ],
+      "era_id": "ERA_NGUYEN",
+      "sources": [
+        {
+          "title": "Fixture source",
+          "url": "https://example.org/heritage"
+        }
+      ]
+    },
+    "souvenir": {
+      "job_id": null,
+      "status": "not_requested",
+      "asset_id": null,
+      "error": null
+    }
+  }
+}

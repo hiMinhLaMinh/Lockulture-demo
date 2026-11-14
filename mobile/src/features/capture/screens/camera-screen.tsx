@@ -9,14 +9,22 @@ import { Note, Surface, commonStyles as c } from '@/shared/components/surface';
 import { colors } from '@/shared/theme/tokens';
 import { useAppStore } from '@/state/app-store';
 import { useCaptureStore } from '@/state/capture-store';
+import { captureLocation } from '@/features/capture/lib/location';
 import { preparePhoto } from '@/features/capture/lib/photo';
 import { env } from '@/config/env';
 import { currentActor, useActorId } from '@/features/social/api/session';
 export default function CameraScreen() {
-  const { mode: rawMode, missionId } = useLocalSearchParams<{
+  const {
+    mode: rawMode,
+    missionId,
+    purpose,
+  } = useLocalSearchParams<{
     mode?: string;
     missionId?: string;
+    purpose?: string;
   }>();
+  const portrait = purpose === 'portrait';
+  const parentDraft = useCaptureStore((s) => s.draft);
   const mode = rawMode === 'mission' ? 'mission' : 'free';
   const mockUser = useAppStore((s) => s.mockUser);
   const actor = useActorId();
@@ -24,13 +32,18 @@ export default function CameraScreen() {
   const mission = useAppStore((s) => s.activeMission);
   const records = useCaptureStore((s) => s.records);
   const valid =
-    mode === 'free' ||
-    (env.dataSource === 'mock' &&
-      !!mission &&
+    (portrait &&
+      !!parentDraft?.souvenirOptIn &&
+      !parentDraft.apiKeys &&
+      parentDraft.ownerId === owner) ||
+    (!portrait && mode === 'free') ||
+    (!!mission &&
       mission.id === missionId &&
-      !records.some(
-        (r) => r.ownerId === owner && r.missionId === mission.id && r.verdict === 'completed',
-      ));
+      (env.dataSource === 'api'
+        ? mission.status === 'active'
+        : !records.some(
+            (r) => r.ownerId === owner && r.missionId === mission.id && r.verdict === 'completed',
+          )));
   const [permission, requestPermission, refreshPermission] = useCameraPermissions();
   const camera = useRef<CameraView>(null);
   const focused = useIsFocused();
@@ -74,11 +87,34 @@ export default function CameraScreen() {
         (env.dataSource === 'api' ? currentActor() : useAppStore.getState().mockUser?.id) !== owner
       )
         return;
+      if (portrait) {
+        const original = useCaptureStore.getState().draft;
+        if (!original || original.ownerId !== owner || !original.souvenirOptIn || original.apiKeys)
+          throw new Error('Phiên ảnh đã thay đổi.');
+        useCaptureStore.setState({ draft: { ...original, portraitPhoto: saved } });
+        router.back();
+        return;
+      }
       if (mode === 'mission' && useAppStore.getState().activeMission?.id !== missionId)
         throw new Error('Nhiệm vụ đã thay đổi. Hãy mở lại camera từ nhiệm vụ hiện tại.');
       const draft = useCaptureStore
         .getState()
         .start(saved, owner, mode, mode === 'mission' ? mission : null);
+      if (env.dataSource === 'api' && mode === 'mission') {
+        try {
+          const location = await captureLocation();
+          if (!mounted.current || !focusRef.current || currentActor() !== owner) return;
+          useCaptureStore.setState({ draft: { ...draft, captureLocation: location } });
+        } catch (cause) {
+          setError(cause instanceof Error ? cause.message : 'Chưa lấy được GPS.');
+        }
+      }
+      if (
+        !mounted.current ||
+        !focusRef.current ||
+        (env.dataSource === 'api' && currentActor() !== owner)
+      )
+        return;
       router.push({ pathname: '/(main)/capture/preview', params: { id: draft.id } });
     } catch {
       if (mounted.current) setError('Chưa chụp hoặc lưu được ảnh. Kiểm tra camera và thử lại.');
@@ -88,7 +124,15 @@ export default function CameraScreen() {
     }
   }
   return (
-    <Page title={mode === 'mission' ? 'Chụp nhiệm vụ' : 'Chụp khám phá'}>
+    <Page
+      title={
+        portrait
+          ? 'Ảnh chân dung cho ảnh quà'
+          : mode === 'mission'
+            ? 'Chụp nhiệm vụ'
+            : 'Chụp khám phá'
+      }
+    >
       {!valid ? (
         <>
           <Note error>Nhiệm vụ không còn hoạt động hoặc đã hoàn thành.</Note>
@@ -96,7 +140,13 @@ export default function CameraScreen() {
         </>
       ) : (
         <>
-          {mode === 'free' && (
+          {portrait ? (
+            <Note>
+              Chụp rõ chính bạn. Ảnh này chỉ dùng cho ảnh hoạt hoạ bạn đã đồng ý; không thay bằng
+              chứng địa điểm.
+            </Note>
+          ) : null}
+          {!portrait && mode === 'free' && (
             <Note>
               Đặt biển tên đường, món ăn hoặc đồ vật trong khung. Giữ máy ổn định để thấy rõ chi
               tiết.
@@ -109,7 +159,8 @@ export default function CameraScreen() {
               <Ionicons name="camera-outline" size={40} color={colors.accent} />
               <Text style={c.title}>Cho phép sử dụng camera</Text>
               <Note>
-                Quyền camera chỉ phục vụ chụp ảnh khám phá. Không cần quyền micro hoặc GPS tại đây.
+                Quyền camera chỉ phục vụ chụp ảnh khám phá. Nhiệm vụ cần thêm quyền vị trí để xác
+                minh đến nơi.
               </Note>
               <Action
                 label={permission.canAskAgain ? 'Cho phép camera' : 'Mở cài đặt camera'}

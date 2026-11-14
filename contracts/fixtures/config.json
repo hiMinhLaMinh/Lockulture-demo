@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "free_xp": 20,
   "mission_xp": 100,
   "fragment_goal": 3,
@@ -24,5 +24,10 @@
   "orphan_asset_retention_hours": 24,
   "failed_evidence_retention_days": 7,
   "max_worker_attempts": 3,
-  "job_deadline_seconds": 600
+  "job_deadline_seconds": 600,
+  "arrival_radius_m": 150,
+  "capture_accuracy_max_m": 50,
+  "capture_max_age_seconds": 60,
+  "capture_future_tolerance_seconds": 5,
+  "max_image_calls_souvenir": 1
 }

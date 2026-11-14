@@ -20,6 +20,8 @@ export type Mission = {
   version: number;
   eraId: string;
   eraName: string;
+  arrivalRadiusM?: number;
+  status?: 'active' | 'replaced' | 'completed';
   placeId: string;
   placeName: string;
   address: string;
@@ -32,10 +34,13 @@ export type Mission = {
   revealedHints: number;
   answerRevealed: boolean;
 };
-export type MissionSearchStage = 'finding' | 'reviewing' | 'preparing';
+export type MissionSearchStage =
+  'queued' | 'finding' | 'reviewing' | 'preparing' | 'evaluating' | 'persisting' | 'done';
 export type MissionSearchInput = {
   location: Coordinates;
   radiusMeters: number;
+  locationSource?: 'gps' | 'manual';
+  expectedActiveMissionId?: string | null;
   eraId?: string;
   excludePlaceId?: string;
   scenario?: 'success' | 'empty' | 'error';
@@ -54,7 +59,16 @@ export type CaptureDraft = {
   mission: Mission | null;
   photo: CapturedPhoto;
   evidence: CapturedPhoto[];
-  apiKeys?: { upload: string; submit: string; retry: string };
+  captureLocation?: {
+    latitude: number;
+    longitude: number;
+    accuracy_m: number;
+    captured_at: string;
+    source: 'gps';
+  };
+  souvenirOptIn?: boolean;
+  portraitPhoto?: CapturedPhoto;
+  apiKeys?: { upload: string; portraitUpload: string; submit: string; retry: string };
   submissionId?: string;
   serverSession?: { id: string; previous: string };
   scenario: CaptureScenario;
