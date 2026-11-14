@@ -4,6 +4,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code?: string,
+    public readonly retryable = false,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -18,21 +20,34 @@ export async function requestJson<T>(
   const headers = new Headers(options.headers);
   headers.set('Accept', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const controller = options.signal ? null : new AbortController();
-  const timer = controller ? setTimeout(() => controller.abort(), 15000) : null;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (options.signal?.aborted) abort();
+  options.signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, 15000);
   try {
     const response = await fetch(
       `${env.apiBaseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`,
       {
         ...options,
         headers,
-        signal: options.signal ?? controller?.signal,
+        signal: controller.signal,
       },
     );
-    if (!response.ok) throw new ApiError(response.status, `Yêu cầu thất bại (${response.status}).`);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const error = payload?.error;
+      throw new ApiError(
+        response.status,
+        `Yêu cầu thất bại (${response.status}).`,
+        typeof error?.code === 'string' ? error.code : undefined,
+        error?.retryable === true,
+      );
+    }
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   } finally {
-    if (timer !== null) clearTimeout(timer);
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', abort);
   }
 }
