@@ -108,7 +108,7 @@ def search_users(ctx: Context, query: Search, limit: Limit = 20, cursor: str | N
     term = normalized(query)
 
     def list_users(tx, actor):
-        rows = [row for row in tx.rows("users") if row["id"] != actor and
+        rows = [relations.public_user(row) for row in tx.rows("users") if row["id"] != actor and
                 (term in normalized(row["display_name"]) or term in row["username"])]
         return page(rows, limit, cursor, ["users", actor, term], user_key)
 

@@ -1,2 +1,3 @@
 fastapi>=0.110.0
+pydantic>=2.7,<3
 uvicorn[standard]>=0.28.0

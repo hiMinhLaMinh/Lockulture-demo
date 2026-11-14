@@ -186,3 +186,97 @@ def test_reactions_comments_and_rank(client, services):
     assert second["items"][0]["id"] not in {row["id"] for row in first["items"]}
     assert call(client, "GET", "/posts", params={"cursor": first["next_cursor"]}).status_code == 422
     assert [row["rank"] for row in call(client, "GET", "/leaderboard").json()["items"]] == [1, 1, 3]
+
+
+def test_retry_after_precommit_failure(client, services, monkeypatch):
+    from backend.src.social.core import SocialError
+
+    atomic = services.repository.atomic
+
+    def fail_once(operation):
+        monkeypatch.setattr(services.repository, "atomic", atomic)
+
+        def drop(transaction):
+            operation(transaction)
+            raise SocialError(503, "Temporary repository failure")
+
+        return atomic(drop)
+
+    monkeypatch.setattr(services.repository, "atomic", fail_once)
+    key = uuid4()
+    failed = publish(client, key=key)
+    assert failed.status_code == 503 and failed.json()["error"]["retryable"]
+    assert call(client, "GET", "/posts").json()["items"] == []
+    created = publish(client, key=key)
+    assert created.status_code == 201
+    assert publish(client, key=key).json() == created.json()
+    assert len(call(client, "GET", "/posts").json()["items"]) == 1
+
+
+def test_idempotency_includes_path_and_expires(client, services):
+    from datetime import datetime, timedelta, timezone
+
+    current = datetime(2026, 11, 12, tzinfo=timezone.utc)
+    services.clock = lambda: current
+    second = call(client, "POST", "/groups", json={"name": "Khác", "member_ids": []}).json()["id"]
+    key = uuid4()
+    assert call(client, "PATCH", f"/groups/{G}", key=key, json={"name": "Mới"}).status_code == 200
+    assert call(client, "PATCH", f"/groups/{second}", key=key, json={"name": "Mới"}).json()["error"]["code"] == "idempotency_conflict"
+
+    created = publish(client, key=key)
+    assert created.status_code == 201
+    url = call(client, "GET", f"/assets/{ASSET}/url").json()["url"]
+    assert client.get(url).status_code == 200
+    current += timedelta(seconds=60)
+    assert client.get(url).status_code == 404
+    current += timedelta(days=7)
+    duplicate = publish(client, key=key)
+    assert duplicate.status_code == 409
+    assert publish(client, key=key).json() == duplicate.json()
+
+
+def test_runtime_contract(client):
+    from pathlib import Path
+
+    import yaml
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    root = Path(__file__).resolve().parents[2]
+    spec = yaml.safe_load((root / "contracts/openapi.yaml").read_text())
+    routes = client.get("/openapi.json").json()["paths"]
+    requests = [
+        ("GET", "/health", "Health"),
+        ("GET", "/me", "User"),
+        ("GET", "/friends", "UserPage"),
+        ("GET", f"/groups/{G}", "Group"),
+        ("GET", f"/groups/{G}/members", "MemberPage"),
+        ("GET", "/discoveries", "DiscoveryPage"),
+        ("GET", f"/discoveries/{DISCOVERY}", "Discovery"),
+        ("GET", "/leaderboard", "Leaderboard"),
+        ("GET", f"/assets/{ASSET}/url", "AssetUrl"),
+        ("GET", "/posts", "PostPage"),
+    ]
+    for route, methods in routes.items():
+        assert route.startswith("/api/v1")
+        for method, operation in methods.items():
+            expected = spec["paths"][route.removeprefix("/api/v1")][method]
+            assert operation["operationId"] == expected["operationId"]
+            success = next(code for code in expected["responses"] if code.startswith("2"))
+            assert success in operation["responses"]
+
+    def validate(schema, value):
+        Draft202012Validator({
+            "components": spec["components"],
+            "$ref": f"#/components/schemas/{schema}",
+        }, format_checker=FormatChecker()).validate(value)
+
+    for method, path, schema in requests:
+        response = call(client, method, path)
+        assert response.status_code == 200
+        validate(schema, response.json())
+    response = publish(client)
+    assert response.status_code == 201
+    validate("Post", response.json())
+    denied = call(client, "GET", f"/posts/{response.json()['id']}", "D")
+    assert denied.status_code == 404
+    validate("Error", denied.json())

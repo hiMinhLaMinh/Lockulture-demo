@@ -2,10 +2,14 @@
 from .core import digest, new_id, require, timestamp
 
 
+def public_user(row):
+    return {key: row[key] for key in ("id", "display_name", "username", "bio", "xp")}
+
+
 def user(tx, user_id):
     result = tx.get("users", user_id)
     require(result is not None, 404, "User not found")
-    return result
+    return public_user(result)
 
 
 def pair_key(first, second):
