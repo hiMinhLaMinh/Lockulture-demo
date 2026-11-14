@@ -280,3 +280,51 @@ def test_runtime_contract(client):
     denied = call(client, "GET", f"/posts/{response.json()['id']}", "D")
     assert denied.status_code == 404
     validate("Error", denied.json())
+
+
+def test_group_capacity_and_contention_in_one_process(client, services):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from backend.src.social.relationships import pair_key
+
+    candidates = [str(uuid4()) for _ in range(19)]
+
+    def seed(tx):
+        for index, person in enumerate(candidates):
+            tx.put("users", person, {
+                "id": person, "display_name": f"Bạn {index}", "username": f"friend_{index}",
+                "bio": "", "xp": 0,
+            })
+            tx.put("pairs", pair_key(A, person), {"users": sorted([A, person]), "status": "accepted"})
+
+    services.repository.atomic(seed)
+    path = f"/groups/{G}/members"
+    assert call(client, "POST", path, json={"user_ids": candidates[:17]}).json()["member_count"] == 19
+
+    def add(person):
+        return call(client, "POST", path, json={"user_ids": [person]}).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        assert sorted(workers.map(add, candidates[17:])) == [200, 409]
+    assert call(client, "GET", f"/groups/{G}").json()["member_count"] == 20
+
+
+def test_feed_filters_before_keyset_pagination(client, services):
+    posted = publish(client, friends=[B], groups=[]).json()
+
+    def seed(tx):
+        original = tx.get("posts", posted["id"])
+        for index in range(55):
+            visible_id, hidden_id = str(uuid4()), str(uuid4())
+            tx.put("posts", visible_id, {**original, "id": visible_id})
+            tx.put("posts", hidden_id, {**original, "id": hidden_id, "direct": [C]})
+
+    services.repository.atomic(seed)
+    first = call(client, "GET", "/posts", "B", params={"limit": 50}).json()
+    last = call(client, "GET", "/posts", "B", params={"cursor": first["next_cursor"]}).json()
+    assert len(first["items"]) == 50 and len(last["items"]) == 6
+    assert last["next_cursor"] is None
+    ids = [row["id"] for row in first["items"] + last["items"]]
+    assert ids == sorted(set(ids), reverse=True)
+    assert all(row["audience"] is None for row in first["items"] + last["items"])
+    assert call(client, "GET", "/posts", "C", params={"cursor": first["next_cursor"]}).status_code == 422
