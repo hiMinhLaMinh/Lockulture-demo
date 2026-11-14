@@ -1,0 +1,16 @@
+{
+  "operation_id": "startMissionSearch",
+  "schema": "SearchInput",
+  "valid": true,
+  "data": {
+    "location": {
+      "latitude": 16.4692,
+      "longitude": 107.5778
+    },
+    "location_source": "manual",
+    "radius_meters": 1000,
+    "era_id": "ERA_NGUYEN",
+    "exclude_place_id": null,
+    "expected_active_mission_id": null
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "operation_id": "getPost",
+  "schema": "Error",
+  "valid": true,
+  "data": {
+    "error": {
+      "code": "not_found",
+      "message": "Không tìm thấy bài đăng.",
+      "retryable": false,
+      "request_id": "00000000-0000-4000-8000-000000000091"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "operation_id": "getMe",
+  "schema": "User",
+  "valid": true,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "display_name": "Minh",
+    "username": "minh_demo",
+    "bio": "",
+    "xp": 120
+  }
+}

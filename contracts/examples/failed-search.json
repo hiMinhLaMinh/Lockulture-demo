@@ -1,0 +1,21 @@
+{
+  "operation_id": "getMissionSearch",
+  "schema": "Job",
+  "valid": true,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000013",
+    "kind": "mission_search",
+    "status": "failed",
+    "stage": "done",
+    "resource_id": null,
+    "error": {
+      "code": "provider_failed",
+      "message": "Dịch vụ tạm thời không phản hồi.",
+      "retryable": false,
+      "request_id": "00000000-0000-4000-8000-000000000090"
+    },
+    "created_at": "2026-11-11T02:00:00Z",
+    "updated_at": "2026-11-11T02:00:00Z",
+    "retry_after_seconds": 0
+  }
+}

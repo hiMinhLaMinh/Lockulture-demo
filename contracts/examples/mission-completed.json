@@ -1,0 +1,35 @@
+{
+  "operation_id": "getSubmission",
+  "schema": "Submission",
+  "valid": true,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000012",
+    "job_id": "00000000-0000-4000-8000-000000000013",
+    "evaluation_session_id": "00000000-0000-4000-8000-000000000014",
+    "session_status": "completed",
+    "evidence_count": 1,
+    "mode": "mission",
+    "status": "succeeded",
+    "verdict": "completed",
+    "name": "Ngọ Môn",
+    "knowledge": "Ngọ Môn là cổng chính phía nam của Hoàng thành Huế.",
+    "instruction": null,
+    "discovery": {
+      "id": "00000000-0000-4000-8000-000000000015",
+      "submission_id": "00000000-0000-4000-8000-000000000012",
+      "owner_id": "00000000-0000-4000-8000-000000000001",
+      "mode": "mission",
+      "mission_id": "00000000-0000-4000-8000-000000000010",
+      "asset_id": "00000000-0000-4000-8000-000000000011",
+      "name": "Ngọ Môn",
+      "knowledge": "Ngọ Môn là cổng chính phía nam của Hoàng thành Huế.",
+      "subject_key": "place:fixture-ngo-mon",
+      "era_id": "ERA_NGUYEN",
+      "xp_awarded": 100,
+      "fragment_added": true,
+      "reward_reason": "granted",
+      "created_at": "2026-11-11T02:00:00Z"
+    },
+    "error": null
+  }
+}

@@ -1,0 +1,448 @@
+{
+  "version": "1.0.0",
+  "note": "Specification vectors; API/live cases remain pending until backend/mobile implementation. Historical SQL evidence does not validate Firebase.",
+  "fixture_identities": "fixtures/identities.json",
+  "cases": [
+    {
+      "id": "API-01",
+      "operations": [
+        "health"
+      ],
+      "layer": "http",
+      "given": "API running",
+      "when": "GET /api/v1/health without JWT",
+      "then": "200 status ok, contract_version 1.0.0; no secrets",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-02",
+      "operations": [
+        "getMe",
+        "updateMe"
+      ],
+      "layer": "http",
+      "given": "Confirmed Firebase user A with valid JWT, no profile",
+      "when": "GET /me twice, PATCH display_name then GET",
+      "then": "One profile for sub; stable generated unique username; update persisted; XP from ledger; no client xp field accepted",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-03",
+      "operations": [
+        "getTimeline"
+      ],
+      "layer": "http",
+      "given": "A has 2 distinct fragments in ERA_NGUYEN",
+      "when": "GET /timeline",
+      "then": "Exactly 10 canonical eras; ERA_NGUYEN in_progress count2 goal3; ordered sort_order",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-04",
+      "operations": [
+        "listDiscoveries",
+        "getDiscovery"
+      ],
+      "layer": "http",
+      "given": "A owns discovery X; B does not",
+      "when": "A lists/reads X; B GET X",
+      "then": "A paginated owner discoveries; B404 even if B can see a Post of X; Post supplies shared display fields",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-05",
+      "operations": [
+        "startMissionSearch",
+        "getMissionSearch",
+        "getActiveMission",
+        "getMission"
+      ],
+      "layer": "http",
+      "given": "A has active M0; fixture Maps returns place P within1km in chosen era",
+      "when": "POST search expected M0, then poll search and GET active/detail",
+      "then": "202 Job then succeeded resource_id M1; M0 replaced only on commit; M1 has P,100XP,3hints,criteria; no_result retains M0; user B404",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-06",
+      "operations": [
+        "revealHint",
+        "revealAnswer"
+      ],
+      "layer": "http",
+      "given": "M active with0 revealed hints",
+      "when": "POST hints expected0 twice using same key; PUT answer {} twice",
+      "then": "Hint index1 once; new key with stale expected0 is409; max3 hints; answer true; no Gemini call",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-07",
+      "operations": [
+        "uploadAsset"
+      ],
+      "layer": "http",
+      "given": "A signed in and fixture JPEG/PNG/WebP <=8MiB and20MP",
+      "when": "POST multipart photo, retry same key/bytes; upload oversized/corrupt separately",
+      "then": "201 JPEG asset<=1080; same ID replay; wrong bytes409; excessive413/invalid415; no orphan ready metadata",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-08",
+      "operations": [
+        "getAssetUrl"
+      ],
+      "layer": "http",
+      "given": "Private asset belongs A and Post grants B, not C",
+      "when": "A GET URL; B GET with post_id; C GET guessed IDs",
+      "then": "A/B200 URL expiry<=60s; C404; never public permanent URL",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-09",
+      "operations": [
+        "startSubmission",
+        "getSubmission"
+      ],
+      "layer": "http",
+      "given": "A uploaded asset; fixture vision free accepted",
+      "when": "POST free null mission/session/previous, then GET",
+      "then": "202 queued then succeeded accepted +20XP, discovery, session completed; zero Post automatically",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-10",
+      "operations": [
+        "retrySubmission"
+      ],
+      "layer": "http",
+      "given": "Submission failed before model call; attempts1, budget unused, deadline remaining",
+      "when": "POST retry {} same key twice; poll",
+      "then": "Same submission/session/sequence, count unchanged; generation increments once; quota once per retry key; one outcome",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-11",
+      "operations": [
+        "searchUsers",
+        "getUser"
+      ],
+      "layer": "http",
+      "given": "A/B/C/D profiles present",
+      "when": "A query minh, read B, query one character",
+      "then": "Case/accent insensitive search excludes A; profile has no email; short query422; nonexistent404",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-12",
+      "operations": [
+        "listFriends",
+        "listFriendRequests",
+        "requestFriend",
+        "respondFriendRequest",
+        "removeFriend"
+      ],
+      "layer": "http",
+      "given": "A and D initially unrelated",
+      "when": "A requestD; D list incoming/accept; A listFriends; A DELETE friendD twice",
+      "then": "Both see accepted relation; only recipient accept/reject, sender cancel; second DELETE204; direct post grant unaffected",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-13",
+      "operations": [
+        "createGroup",
+        "listGroups",
+        "getGroup",
+        "renameGroup",
+        "dissolveGroup"
+      ],
+      "layer": "http",
+      "given": "A friendsB; B not owner",
+      "when": "A creates G with B, lists, gets, renames; B attempts rename/dissolve; A dissolves",
+      "then": "Owner included; count2; B403 mutations; A204 delete; G absent lists and reads404; original discoveries intact",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-14",
+      "operations": [
+        "listMembers",
+        "addMembers",
+        "removeMember"
+      ],
+      "layer": "http",
+      "given": "G ownerA membersA,B; A friendsC",
+      "when": "A addsC twice, list; B tries addingD; C leaves; A removesB; A tries leave",
+      "then": "3 then2 then1 live members; repeated add no-op; B403; owner self-leave409; max20 enforced under concurrent inserts",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-15",
+      "operations": [
+        "publishPost",
+        "listPosts",
+        "getPost"
+      ],
+      "layer": "http",
+      "given": "A discovery unposted, B friend and memberG, C not selected",
+      "when": "A publish directB + G; retry same key; GET feed as A/B/C",
+      "then": "201 one Post; A/B see once, C cannot see; author audience populated, viewer null; blank audience422; duplicate discovery new key409",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-16",
+      "operations": [
+        "addPostGroups"
+      ],
+      "layer": "http",
+      "given": "Post shared G1; A memberG2; C newly joinedG1 after publication",
+      "when": "A add G2 and already-sharedG1",
+      "then": "G2 snapshot created once, C receives no old G1 grant; all-or-nothing if any target invalid",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-17",
+      "operations": [
+        "deletePost"
+      ],
+      "layer": "http",
+      "given": "Post P owned A readable B",
+      "when": "B DELETE P, A DELETE P twice; B GET and list",
+      "then": "B403; A204 twice; others404/list excludes P; discovery/XP retained",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-18",
+      "operations": [
+        "setReaction",
+        "removeReaction"
+      ],
+      "layer": "http",
+      "given": "B can read P",
+      "when": "B heart, wow, same-key wow replay, DELETE reaction twice",
+      "then": "Exactly1row then0; counts heart0 wow1 then0; no XP; hidden Post404",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-19",
+      "operations": [
+        "createComment",
+        "listComments",
+        "deleteComment"
+      ],
+      "layer": "http",
+      "given": "B can read P",
+      "when": "B creates trimmed text, retries same key, lists; A tries delete; B deletes twice",
+      "then": "One comment/count1; author headerB; A403 even as Post author; B204 count0; whitespace/301codepoints422",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "API-20",
+      "operations": [
+        "getLeaderboard"
+      ],
+      "layer": "http",
+      "given": "A friends B,C; ledger totals A120,B120,C20,D500",
+      "when": "A GET leaderboard scope friends",
+      "then": "A/B rank1, C rank3; D absent; totals equal /me/users; ties username thenUUID; no friends returns actor rank1",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-01",
+      "operations": [
+        "getPost",
+        "getAssetUrl",
+        "listPosts"
+      ],
+      "layer": "http",
+      "given": "Post group-only to G(A,B), C joins later",
+      "when": "B leaves/rejoins G; C requests old Post",
+      "then": "B/C404 old Post and URL; membership incarnation prevents revival; author still reads",
+      "evidence": "Historical SQL only; Firestore tests pending: snapshot, leave/rejoin, new member"
+    },
+    {
+      "id": "INV-02",
+      "operations": [
+        "getPost",
+        "getAssetUrl",
+        "removeFriend",
+        "dissolveGroup"
+      ],
+      "layer": "http",
+      "given": "B has direct and group grant on same P",
+      "when": "Unfriend B then dissolve G",
+      "then": "B keeps direct global-feed access; G feed unavailable; signed URL issued before removal may work <=60s",
+      "evidence": "Historical SQL only; Firestore tests pending: direct overlap / dissolved group; live URL pending"
+    },
+    {
+      "id": "INV-03",
+      "operations": [
+        "startSubmission",
+        "getSubmission"
+      ],
+      "layer": "http",
+      "given": "Two workers finish same mission and free same-subject/date",
+      "when": "Commit concurrently under actor lock",
+      "then": "One reward key winner, one mission discovery; free second valid discovery0XP; timeline cap3 unique subject; /me and leaderboard consistent",
+      "evidence": "Historical SQL concurrent unique-ledger test; repository worker and Firestore integration pending"
+    },
+    {
+      "id": "INV-04",
+      "operations": [
+        "startSubmission",
+        "getSubmission"
+      ],
+      "layer": "http",
+      "given": "Session awaiting_evidence evidence_count3 previousS3",
+      "when": "Send S4 expectedS3; concurrently another photo expectedS3",
+      "then": "One accepted request; other409; S4 unclear closes session; fifth photo409; expired session409",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-05",
+      "operations": [
+        "startSubmission",
+        "getSubmission"
+      ],
+      "layer": "http",
+      "given": "Fixture blurry, sharp no-identification, wrong-object, matching-object images",
+      "when": "Evaluate both free/mission branches via stub model then live smoke",
+      "then": "Blur=retake_required; insufficient identity=unidentified; free out_of_scope vs mission not_matched; valid accepted/completed only; instruction actionable; no false historical conclusion from blur",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-06",
+      "operations": [
+        "startMissionSearch",
+        "getMissionSearch"
+      ],
+      "layer": "http",
+      "given": "Model proposes invented place/outside radius/wrong era or search loops",
+      "when": "Run search worker until budgets consumed",
+      "then": "Reject absent candidate/era/radius; Maps<=2 Gemini<=3 including invalid JSON; no_result vs failed accurate; old mission retained",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-07",
+      "operations": [
+        "retrySubmission",
+        "getSubmission"
+      ],
+      "layer": "http",
+      "given": "Provider request sent, worker crashes before recording response; gemini_calls1",
+      "when": "CloudTasks redelivery and client retry",
+      "then": "No second Gemini call; failed retryable=false unless checkpoint exists to finalize without provider; no XP duplication",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-08",
+      "operations": [
+        "startMissionSearch",
+        "getMissionSearch"
+      ],
+      "layer": "http",
+      "given": "DB job+outbox committed, API crashes before enqueue",
+      "when": "Scheduler dispatches; provider result checkpointed; worker lease expires",
+      "then": "Recovery enqueues generation-specific task; one eligible lease; max3 claims and10min deadline; stale worker cannot commit",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-09",
+      "operations": [
+        "startSubmission",
+        "getSubmission"
+      ],
+      "layer": "http",
+      "given": "Free same subject valid, submitted 16:59:59Z then17:00:01Z on same UTC date",
+      "when": "Workers complete in reversed order",
+      "then": "Vietnam calendar days differ ->20 each; reward uses submission timestamp, not finish timestamp",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-10",
+      "operations": [
+        "startMissionSearch",
+        "startSubmission",
+        "retrySubmission"
+      ],
+      "layer": "http",
+      "given": "A hits10 search or30 submission/retry requests in UTC hour",
+      "when": "Replay old key then send fresh key",
+      "then": "Replay same response with no quota; fresh429 with Retry-After until next hour; worker retries no new quota",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-11",
+      "operations": [
+        "listPosts",
+        "listComments",
+        "listDiscoveries"
+      ],
+      "layer": "http",
+      "given": "Dataset has >50 rows including equal created_at; posts from unseen users",
+      "when": "Page with default20, maximum50; tamper cursor/filter",
+      "then": "No duplicates/gaps in stable dataset, no ACL leakage; changed filter/invalid cursor422; next_cursor null at end",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "INV-12",
+      "operations": [
+        "uploadAsset"
+      ],
+      "layer": "http",
+      "given": "Concurrent identical upload key; first worker slow then lease expires",
+      "when": "Second claims reservation and uploads; old worker finishes later",
+      "then": "Only current lease publishes ready asset; stale object removed/reconciled; different hash409; active lease returns409 retryable=true Retry-After2; no long transaction around network",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "LIVE-01",
+      "operations": [
+        "getMe",
+        "updateMe"
+      ],
+      "layer": "native_live",
+      "given": "Firebase staging email confirmation and native deep link configured",
+      "when": "Signup/confirm/login/refresh/password-reset/signout on Android/iOS",
+      "then": "Unconfirmed no business access; expired or wrong iss/aud/signature/sub rejected; refresh once; signout clears user cache; token not logged",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "LIVE-02",
+      "operations": [
+        "getPost",
+        "createComment",
+        "setReaction",
+        "getLeaderboard"
+      ],
+      "layer": "native_live",
+      "given": "Two real accounts on separate devices with reachable HTTPS API",
+      "when": "A captures, receives reward, sends toB; B refreshes reacts/comments",
+      "then": "B sees shared image via private URL; A sees feedback on refresh; C denied via raw HTTP; totals server-authoritative",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "LIVE-03",
+      "operations": [
+        "startMissionSearch",
+        "startSubmission"
+      ],
+      "layer": "provider_live",
+      "given": "Staging Maps/Gemini keys, real coordinates and representative photos",
+      "when": "Live search and vision in both modes; disable provider to test errors",
+      "then": "Real providers recorded in mode/trace, no fixture fallback; limits honored; historical quality/manual review recorded separately",
+      "evidence": "pending implementation"
+    },
+    {
+      "id": "LIVE-04",
+      "operations": [
+        "uploadAsset",
+        "getAssetUrl"
+      ],
+      "layer": "firebase_live",
+      "given": "Staging private bucket and DB runtime role",
+      "when": "Attempt anon/authenticated reads to Firestore collections and public Storage; run orphan cleanup",
+      "then": "Client denied; backend authorized; signed TTL works; orphan24h/failed7d cleaned idempotently; attached discovery retained",
+      "evidence": "pending implementation"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "operation_id": "listFriends",
+  "schema": "UserPage",
+  "valid": true,
+  "data": {
+    "items": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "display_name": "Minh An",
+        "username": "minh_an",
+        "bio": "",
+        "xp": 120
+      }
+    ],
+    "next_cursor": null
+  }
+}

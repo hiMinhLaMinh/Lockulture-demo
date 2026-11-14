@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Search decision v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "search"
+        },
+        "query": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 200
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "action",
+        "query",
+        "reason"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "select"
+        },
+        "mission": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "place_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "era_id": {
+              "type": "string",
+              "enum": [
+                "ERA_ANCIENT",
+                "ERA_BAC_THUOC",
+                "ERA_NGO_DINH_TIEN_LE",
+                "ERA_LY_TRAN",
+                "ERA_LE_SO",
+                "ERA_MAC_LE_TRUNG_HUNG",
+                "ERA_TAY_SON",
+                "ERA_NGUYEN",
+                "ERA_MODERN",
+                "ERA_CONTEMPORARY"
+              ]
+            },
+            "clue": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 600
+            },
+            "hints": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "photo_requirements": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "minItems": 1,
+              "maxItems": 5
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 700
+            }
+          },
+          "required": [
+            "place_id",
+            "era_id",
+            "clue",
+            "hints",
+            "photo_requirements",
+            "rationale"
+          ]
+        }
+      },
+      "required": [
+        "action",
+        "mission"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "stop"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        }
+      },
+      "required": [
+        "action",
+        "reason"
+      ]
+    }
+  ]
+}

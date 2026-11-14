@@ -1,0 +1,41 @@
+{
+  "operation_id": "getLeaderboard",
+  "schema": "Leaderboard",
+  "valid": true,
+  "data": {
+    "items": [
+      {
+        "user": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "display_name": "Minh",
+          "username": "minh_demo",
+          "bio": "",
+          "xp": 120
+        },
+        "rank": 1
+      },
+      {
+        "user": {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "display_name": "Minh An",
+          "username": "minh_an",
+          "bio": "",
+          "xp": 120
+        },
+        "rank": 1
+      },
+      {
+        "user": {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "display_name": "Thảo Linh",
+          "username": "thao_linh",
+          "bio": "",
+          "xp": 20
+        },
+        "rank": 3
+      }
+    ],
+    "my_rank": 1,
+    "as_of": "2026-11-11T02:00:00Z"
+  }
+}

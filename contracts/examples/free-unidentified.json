@@ -1,0 +1,20 @@
+{
+  "operation_id": "getSubmission",
+  "schema": "Submission",
+  "valid": true,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000012",
+    "job_id": "00000000-0000-4000-8000-000000000013",
+    "evaluation_session_id": "00000000-0000-4000-8000-000000000014",
+    "session_status": "awaiting_evidence",
+    "evidence_count": 1,
+    "mode": "free",
+    "status": "succeeded",
+    "verdict": "unidentified",
+    "name": null,
+    "knowledge": null,
+    "instruction": "Chụp rõ đối tượng và chi tiết nhận dạng.",
+    "discovery": null,
+    "error": null
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "operation_id": "updateMe",
+  "schema": "ProfileInput",
+  "valid": true,
+  "data": {
+    "display_name": "Minh"
+  }
+}

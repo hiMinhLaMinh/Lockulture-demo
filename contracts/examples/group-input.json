@@ -1,0 +1,11 @@
+{
+  "operation_id": "createGroup",
+  "schema": "GroupInput",
+  "valid": true,
+  "data": {
+    "name": "Đi tìm dấu ấn Huế",
+    "member_ids": [
+      "00000000-0000-4000-8000-000000000002"
+    ]
+  }
+}

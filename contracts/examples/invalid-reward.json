@@ -1,0 +1,21 @@
+{
+  "operation_id": "getDiscovery",
+  "schema": "Discovery",
+  "valid": false,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000015",
+    "submission_id": "00000000-0000-4000-8000-000000000012",
+    "owner_id": "00000000-0000-4000-8000-000000000001",
+    "mode": "free",
+    "mission_id": null,
+    "asset_id": "00000000-0000-4000-8000-000000000011",
+    "name": "Bánh bèo",
+    "knowledge": "Bánh bèo là một món ăn quen thuộc trong văn hóa ẩm thực Huế.",
+    "subject_key": "food:banh beo",
+    "era_id": null,
+    "xp_awarded": 150,
+    "fragment_added": false,
+    "reward_reason": "granted",
+    "created_at": "2026-11-11T02:00:00Z"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "mission-assessment.schema.json",
+  "data": {
+    "mode": "mission",
+    "verdict": "completed",
+    "name": "Ngọ Môn",
+    "knowledge": "Ngọ Môn là cổng chính phía nam của Hoàng thành Huế.",
+    "instruction": null,
+    "category": "place",
+    "canonical_name": "Ngọ Môn",
+    "locality": "Huế",
+    "era_id": "ERA_NGUYEN"
+  },
+  "valid": true
+}

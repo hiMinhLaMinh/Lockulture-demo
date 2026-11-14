@@ -1,0 +1,21 @@
+{
+  "schema": "search-decision.schema.json",
+  "data": {
+    "action": "select",
+    "mission": {
+      "place_id": "fixture-ngo-mon",
+      "era_id": "ERA_NGUYEN",
+      "clue": "Tìm cổng chính phía nam của Hoàng thành.",
+      "hints": [
+        "Công trình nằm bên quảng trường.",
+        "Phía trên là lầu Ngũ Phụng.",
+        "Tên địa điểm gồm hai chữ: Ngọ Môn."
+      ],
+      "photo_requirements": [
+        "Chụp mặt chính của cổng, thấy rõ phần nền đài và mái phía trên."
+      ],
+      "rationale": "Công trình có liên hệ với Triều Nguyễn."
+    }
+  },
+  "valid": true
+}

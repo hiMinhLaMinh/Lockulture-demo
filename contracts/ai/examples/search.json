@@ -1,0 +1,9 @@
+{
+  "schema": "search-decision.schema.json",
+  "data": {
+    "action": "search",
+    "query": "attractions Huế",
+    "reason": "Tìm nơi có dấu hiệu nhận dạng công khai."
+  },
+  "valid": true
+}

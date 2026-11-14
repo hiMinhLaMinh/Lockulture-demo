@@ -1,0 +1,8 @@
+{
+  "schema": "search-decision.schema.json",
+  "data": {
+    "action": "stop",
+    "reason": "Không còn ứng viên phù hợp trong bán kính."
+  },
+  "valid": true
+}

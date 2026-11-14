@@ -1,0 +1,29 @@
+{
+  "operation_id": "listFriendRequests",
+  "schema": "FriendRequestPage",
+  "valid": true,
+  "data": {
+    "items": [
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "sender": {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "display_name": "Minh An",
+          "username": "minh_an",
+          "bio": "",
+          "xp": 120
+        },
+        "recipient": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "display_name": "Minh",
+          "username": "minh_demo",
+          "bio": "",
+          "xp": 120
+        },
+        "status": "pending",
+        "created_at": "2026-11-11T02:00:00Z"
+      }
+    ],
+    "next_cursor": null
+  }
+}

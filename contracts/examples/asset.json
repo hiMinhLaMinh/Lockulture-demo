@@ -1,0 +1,13 @@
+{
+  "operation_id": "uploadAsset",
+  "schema": "Asset",
+  "valid": true,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000011",
+    "mime_type": "image/jpeg",
+    "width": 1080,
+    "height": 1080,
+    "byte_size": 190000,
+    "created_at": "2026-11-11T02:00:00Z"
+  }
+}

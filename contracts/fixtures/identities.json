@@ -1,0 +1,55 @@
+{
+  "note": "Synthetic contract identifiers, never insert these into production auth.users. Staging runner remaps A-D to SDK-created identities.",
+  "users": {
+    "A": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "display_name": "Minh",
+      "username": "minh_demo",
+      "bio": "",
+      "xp": 120
+    },
+    "B": {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "display_name": "Minh An",
+      "username": "minh_an",
+      "bio": "",
+      "xp": 120
+    },
+    "C": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "display_name": "Thảo Linh",
+      "username": "thao_linh",
+      "bio": "",
+      "xp": 20
+    },
+    "D": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "display_name": "Người mới",
+      "username": "nguoi_moi",
+      "bio": "",
+      "xp": 0
+    }
+  },
+  "friends": [
+    [
+      "A",
+      "B"
+    ],
+    [
+      "A",
+      "C"
+    ]
+  ],
+  "group": {
+    "id": "00000000-0000-4000-8000-000000000016",
+    "owner": "A",
+    "members": [
+      "A",
+      "B"
+    ]
+  },
+  "outsiders": [
+    "C",
+    "D"
+  ]
+}

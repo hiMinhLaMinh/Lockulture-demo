@@ -1,0 +1,13 @@
+{
+  "operation_id": "startSubmission",
+  "schema": "SubmissionInput",
+  "valid": false,
+  "data": {
+    "mode": "free",
+    "asset_id": "00000000-0000-4000-8000-000000000011",
+    "mission_id": "00000000-0000-4000-8000-000000000010",
+    "mission_version": 1,
+    "evaluation_session_id": null,
+    "expected_previous_submission_id": null
+  }
+}

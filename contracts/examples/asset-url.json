@@ -1,0 +1,9 @@
+{
+  "operation_id": "getAssetUrl",
+  "schema": "AssetUrl",
+  "valid": true,
+  "data": {
+    "url": "https://example.invalid/storage/signed/fixture.jpg?token=fixture",
+    "expires_at": "2026-11-11T02:01:00Z"
+  }
+}

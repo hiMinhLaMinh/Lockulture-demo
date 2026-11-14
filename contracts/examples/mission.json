@@ -1,0 +1,32 @@
+{
+  "operation_id": "getMission",
+  "schema": "Mission",
+  "valid": true,
+  "data": {
+    "id": "00000000-0000-4000-8000-000000000010",
+    "version": 1,
+    "era_id": "ERA_NGUYEN",
+    "era_name": "Triều Nguyễn",
+    "place_id": "fixture-ngo-mon",
+    "place_name": "Ngọ Môn",
+    "address": "Đường 23 Tháng 8, Huế",
+    "location": {
+      "latitude": 16.4692,
+      "longitude": 107.5778
+    },
+    "clue": "Tìm cổng chính phía nam của Hoàng thành.",
+    "hints": [
+      "Công trình nằm bên quảng trường.",
+      "Phía trên là lầu Ngũ Phụng.",
+      "Tên địa điểm gồm hai chữ: Ngọ Môn."
+    ],
+    "photo_requirements": [
+      "Chụp mặt chính của cổng, thấy rõ phần nền đài và mái phía trên."
+    ],
+    "distance_meters": 400,
+    "xp": 100,
+    "revealed_hints": 0,
+    "answer_revealed": false,
+    "status": "active"
+  }
+}

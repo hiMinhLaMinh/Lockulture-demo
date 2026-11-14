@@ -1,0 +1,15 @@
+{
+  "schema": "free-assessment.schema.json",
+  "data": {
+    "mode": "free",
+    "verdict": "retake_required",
+    "name": null,
+    "knowledge": null,
+    "instruction": "Chụp gần hơn để thấy mặt món ăn.",
+    "category": null,
+    "canonical_name": null,
+    "locality": null,
+    "era_id": null
+  },
+  "valid": true
+}

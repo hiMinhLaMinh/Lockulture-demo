@@ -1,0 +1,18 @@
+{
+  "operation_id": "getTimeline",
+  "schema": "EraPage",
+  "valid": true,
+  "data": {
+    "items": [
+      {
+        "id": "ERA_ANCIENT",
+        "name": "Thời dựng nước",
+        "period": "Văn Lang – Âu Lạc",
+        "fragment_goal": 3,
+        "status": "not_started",
+        "fragment_count": 0
+      }
+    ],
+    "next_cursor": null
+  }
+}

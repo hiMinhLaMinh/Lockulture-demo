@@ -1,0 +1,15 @@
+{
+  "schema": "free-assessment.schema.json",
+  "data": {
+    "mode": "free",
+    "verdict": "accepted",
+    "name": "Bánh bèo",
+    "knowledge": "Bánh bèo là một món ăn quen thuộc trong văn hóa ẩm thực Huế.",
+    "instruction": null,
+    "category": "food",
+    "canonical_name": "Bánh bèo",
+    "locality": "Huế",
+    "era_id": null
+  },
+  "valid": true
+}

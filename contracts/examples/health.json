@@ -1,0 +1,9 @@
+{
+  "operation_id": "health",
+  "schema": "Health",
+  "valid": true,
+  "data": {
+    "status": "ok",
+    "contract_version": "1.0.0"
+  }
+}

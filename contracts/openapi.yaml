@@ -1,0 +1,2283 @@
+openapi: 3.1.0
+info:
+  title: Lockulture implementation contract
+  version: 1.0.0
+  description: Normative target contract, not current FastAPI runtime. Firebase Auth flows are SDK calls documented
+    separately.
+servers:
+- url: http://localhost:8080/api/v1
+security:
+- bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: health
+      description: health
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+  /me:
+    get:
+      operationId: getMe
+      description: Upsert profile on first verified request; deterministic username u_<first20 hex UUID>, display
+        name from signup metadata or Lữ khách.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      operationId: updateMe
+      description: updateMe
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileInput'
+  /timeline:
+    get:
+      operationId: getTimeline
+      description: All 10 eras, next_cursor null.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EraPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /discoveries:
+    get:
+      operationId: listDiscoveries
+      description: listDiscoveries
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscoveryPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: era_id
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/EraId'
+      - name: mode
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - free
+          - mission
+  /discoveries/{discovery_id}:
+    get:
+      operationId: getDiscovery
+      description: Owner only; viewers receive public knowledge via authorized Post.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discovery'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: discovery_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /mission-searches:
+    post:
+      operationId: startMissionSearch
+      description: startMissionSearch
+      responses:
+        '202':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchInput'
+  /mission-searches/{search_id}:
+    get:
+      operationId: getMissionSearch
+      description: getMissionSearch
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: search_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /missions/active:
+    get:
+      operationId: getActiveMission
+      description: Return own active mission, or JSON null when none. Does not activate or create a mission.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                anyOf:
+                - $ref: '#/components/schemas/Mission'
+                - type: 'null'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /missions/{mission_id}:
+    get:
+      operationId: getMission
+      description: getMission
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mission'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: mission_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /missions/{mission_id}/hints:
+    post:
+      operationId: revealHint
+      description: 'CAS: increase by one if expected matches; no model call, no XP penalty.'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mission'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: mission_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                expected_revealed_hints:
+                  type: integer
+                  minimum: 0
+              required:
+              - expected_revealed_hints
+  /missions/{mission_id}/answer:
+    put:
+      operationId: revealAnswer
+      description: revealAnswer
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mission'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: mission_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+              required: []
+  /assets:
+    post:
+      operationId: uploadAsset
+      description: uploadAsset
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Asset'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                photo:
+                  type: string
+                  format: binary
+              required:
+              - photo
+  /assets/{asset_id}/url:
+    get:
+      operationId: getAssetUrl
+      description: 'Owner or authorized post_id whose asset matches. 60-second signed URL; response Cache-Control:
+        no-store.'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetUrl'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: asset_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: post_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+  /submissions:
+    post:
+      operationId: startSubmission
+      description: startSubmission
+      responses:
+        '202':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionInput'
+  /submissions/{submission_id}:
+    get:
+      operationId: getSubmission
+      description: getSubmission
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: submission_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /submissions/{submission_id}/retry:
+    post:
+      operationId: retrySubmission
+      description: Retry only a failed submission marked retryable, within deadline/attempt limits, with unused
+        provider budget or persisted checkpoint. Keep the same submission/session/asset.
+      responses:
+        '202':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submission'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: submission_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+              required: []
+  /users:
+    get:
+      operationId: searchUsers
+      description: searchUsers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: query
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 50
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      description: getUser
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /friends:
+    get:
+      operationId: listFriends
+      description: listFriends
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+  /friend-requests:
+    get:
+      operationId: listFriendRequests
+      description: listFriendRequests
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequestPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: direction
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - incoming
+          - outgoing
+          default: incoming
+    post:
+      operationId: requestFriend
+      description: requestFriend
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequest'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                target_user_id:
+                  type: string
+                  format: uuid
+              required:
+              - target_user_id
+  /friend-requests/{request_id}:
+    patch:
+      operationId: respondFriendRequest
+      description: respondFriendRequest
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequest'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                action:
+                  type: string
+                  enum:
+                  - accept
+                  - reject
+                  - cancel
+              required:
+              - action
+  /friends/{user_id}:
+    delete:
+      operationId: removeFriend
+      description: removeFriend
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /groups:
+    get:
+      operationId: listGroups
+      description: listGroups
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      operationId: createGroup
+      description: createGroup
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupInput'
+  /groups/{group_id}:
+    get:
+      operationId: getGroup
+      description: getGroup
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    patch:
+      operationId: renameGroup
+      description: renameGroup
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+              required:
+              - name
+    delete:
+      operationId: dissolveGroup
+      description: dissolveGroup
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /groups/{group_id}/members:
+    get:
+      operationId: listMembers
+      description: listMembers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      operationId: addMembers
+      description: addMembers
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 19
+              required:
+              - user_ids
+  /groups/{group_id}/members/{user_id}:
+    delete:
+      operationId: removeMember
+      description: 'Owner removes non-owner, or actor removes self. Owner cannot leave: dissolve group instead.'
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /posts:
+    post:
+      operationId: publishPost
+      description: publishPost
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostInput'
+    get:
+      operationId: listPosts
+      description: Global union own + direct + live group grants, dedupe by post ID. group_id additionally requires
+        current membership and live group share snapshot.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+  /posts/{post_id}:
+    get:
+      operationId: getPost
+      description: getPost
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      operationId: deletePost
+      description: Author soft-deletes post, not discovery or rewards.
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /posts/{post_id}/shares:
+    post:
+      operationId: addPostGroups
+      description: Author only; already shared groups no-op and never expand old snapshots.
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                group_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  maxItems: 10
+              required:
+              - group_ids
+  /posts/{post_id}/reaction:
+    put:
+      operationId: setReaction
+      description: setReaction
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reaction'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reaction:
+                  type: string
+                  enum:
+                  - heart
+                  - clap
+                  - wow
+              required:
+              - reaction
+    delete:
+      operationId: removeReaction
+      description: removeReaction
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /posts/{post_id}/comments:
+    get:
+      operationId: listComments
+      description: listComments
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentPage'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 20
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+    post:
+      operationId: createComment
+      description: createComment
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: post_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+              required:
+              - text
+  /comments/{comment_id}:
+    delete:
+      operationId: deleteComment
+      description: Comment author only, even after post read permission revoked; no content returned.
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: comment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      description: getLeaderboard
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Leaderboard'
+        default:
+          description: Typed error; mapping in docs/implementation/API_RULES.md
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - name: scope
+        in: query
+        required: false
+        schema:
+          type: string
+          const: friends
+          default: friends
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Stable UUID per actor + operation + intent; retain 7 days, conflicting body -> 409.
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+      required:
+      - error
+    User:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        username:
+          type: string
+          pattern: ^[a-z0-9_]{3,24}$
+        bio:
+          type: string
+          maxLength: 160
+        xp:
+          type: integer
+          minimum: 0
+      required:
+      - id
+      - display_name
+      - username
+      - bio
+      - xp
+    ProfileInput:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        username:
+          type: string
+          pattern: ^[a-z0-9_]{3,24}$
+        bio:
+          type: string
+          maxLength: 160
+      required: []
+      minProperties: 1
+    Coordinates:
+      type: object
+      additionalProperties: false
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+      required:
+      - latitude
+      - longitude
+    EraId:
+      type: string
+      enum:
+      - ERA_ANCIENT
+      - ERA_BAC_THUOC
+      - ERA_NGO_DINH_TIEN_LE
+      - ERA_LY_TRAN
+      - ERA_LE_SO
+      - ERA_MAC_LE_TRUNG_HUNG
+      - ERA_TAY_SON
+      - ERA_NGUYEN
+      - ERA_MODERN
+      - ERA_CONTEMPORARY
+    Era:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/EraId'
+        name:
+          type: string
+        period:
+          type: string
+        status:
+          type: string
+          enum:
+          - not_started
+          - in_progress
+          - decoded
+        fragment_count:
+          type: integer
+          minimum: 0
+          maximum: 3
+        fragment_goal:
+          type: integer
+          const: 3
+      required:
+      - id
+      - name
+      - period
+      - status
+      - fragment_count
+      - fragment_goal
+    Job:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - mission_search
+          - submission
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - no_result
+          - failed
+        stage:
+          type: string
+          enum:
+          - queued
+          - finding
+          - reviewing
+          - preparing
+          - evaluating
+          - persisting
+          - done
+        resource_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          description: Mission UUID for succeeded mission_search; otherwise null. Submission jobs use submission
+            UUID internally.
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/ErrorDetail'
+          - type: 'null'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        retry_after_seconds:
+          type: integer
+          minimum: 0
+      required:
+      - id
+      - kind
+      - status
+      - stage
+      - resource_id
+      - error
+      - created_at
+      - updated_at
+      - retry_after_seconds
+    SearchInput:
+      type: object
+      additionalProperties: false
+      properties:
+        location:
+          $ref: '#/components/schemas/Coordinates'
+        location_source:
+          type: string
+          enum:
+          - gps
+          - manual
+        radius_meters:
+          type: integer
+          enum:
+          - 1000
+          - 3000
+          - 5000
+        era_id:
+          anyOf:
+          - $ref: '#/components/schemas/EraId'
+          - type: 'null'
+        exclude_place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+        expected_active_mission_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+      required:
+      - location
+      - location_source
+      - radius_meters
+      - expected_active_mission_id
+    Mission:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          minimum: 1
+        era_id:
+          $ref: '#/components/schemas/EraId'
+        era_name:
+          type: string
+        place_id:
+          type: string
+        place_name:
+          type: string
+        address:
+          type: string
+        location:
+          $ref: '#/components/schemas/Coordinates'
+        clue:
+          type: string
+        hints:
+          type: array
+          items:
+            type: string
+          minItems: 3
+          maxItems: 3
+        photo_requirements:
+          type: array
+          items:
+            type: string
+          minItems: 1
+        distance_meters:
+          type: integer
+          minimum: 0
+        xp:
+          type: integer
+          const: 100
+        revealed_hints:
+          type: integer
+          minimum: 0
+          maximum: 3
+        answer_revealed:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - active
+          - replaced
+          - completed
+      required:
+      - id
+      - version
+      - era_id
+      - era_name
+      - place_id
+      - place_name
+      - address
+      - location
+      - clue
+      - hints
+      - photo_requirements
+      - distance_meters
+      - xp
+      - revealed_hints
+      - answer_revealed
+      - status
+    Asset:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        mime_type:
+          type: string
+          enum:
+          - image/jpeg
+        width:
+          type: integer
+          minimum: 1
+          maximum: 1080
+        height:
+          type: integer
+          minimum: 1
+          maximum: 1080
+        byte_size:
+          type: integer
+          minimum: 1
+          maximum: 8388608
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - mime_type
+      - width
+      - height
+      - byte_size
+      - created_at
+    AssetUrl:
+      type: object
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - url
+      - expires_at
+    SubmissionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum:
+          - free
+          - mission
+        asset_id:
+          type: string
+          format: uuid
+        mission_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        mission_version:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+        evaluation_session_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        expected_previous_submission_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+      required:
+      - mode
+      - asset_id
+      - mission_id
+      - mission_version
+      - evaluation_session_id
+      - expected_previous_submission_id
+      allOf:
+      - if:
+          properties:
+            mode:
+              const: free
+        then:
+          properties:
+            mission_id:
+              type: 'null'
+            mission_version:
+              type: 'null'
+        else:
+          properties:
+            mission_id:
+              type: string
+              format: uuid
+            mission_version:
+              type: integer
+              minimum: 1
+      - if:
+          properties:
+            evaluation_session_id:
+              type: 'null'
+        then:
+          properties:
+            expected_previous_submission_id:
+              type: 'null'
+        else:
+          properties:
+            expected_previous_submission_id:
+              type: string
+              format: uuid
+    Verdict:
+      type: string
+      enum:
+      - accepted
+      - completed
+      - retake_required
+      - unidentified
+      - out_of_scope
+      - not_matched
+    Discovery:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        submission_id:
+          type: string
+          format: uuid
+        owner_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum:
+          - free
+          - mission
+        mission_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+        asset_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        knowledge:
+          type: string
+        subject_key:
+          type: string
+        era_id:
+          anyOf:
+          - $ref: '#/components/schemas/EraId'
+          - type: 'null'
+        xp_awarded:
+          type: integer
+          enum:
+          - 0
+          - 20
+          - 100
+        fragment_added:
+          type: boolean
+        reward_reason:
+          type: string
+          enum:
+          - granted
+          - daily_subject_limit
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - submission_id
+      - owner_id
+      - mode
+      - mission_id
+      - asset_id
+      - name
+      - knowledge
+      - subject_key
+      - era_id
+      - xp_awarded
+      - fragment_added
+      - reward_reason
+      - created_at
+    Submission:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        evaluation_session_id:
+          type: string
+          format: uuid
+        session_status:
+          type: string
+          enum:
+          - open
+          - awaiting_evidence
+          - completed
+          - closed
+          - expired
+        evidence_count:
+          type: integer
+          minimum: 1
+          maximum: 4
+        mode:
+          type: string
+          enum:
+          - free
+          - mission
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - succeeded
+          - failed
+        verdict:
+          anyOf:
+          - $ref: '#/components/schemas/Verdict'
+          - type: 'null'
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+        knowledge:
+          anyOf:
+          - type: string
+          - type: 'null'
+        instruction:
+          anyOf:
+          - type: string
+          - type: 'null'
+        discovery:
+          anyOf:
+          - $ref: '#/components/schemas/Discovery'
+          - type: 'null'
+        error:
+          anyOf:
+          - $ref: '#/components/schemas/ErrorDetail'
+          - type: 'null'
+      required:
+      - id
+      - job_id
+      - evaluation_session_id
+      - session_status
+      - evidence_count
+      - mode
+      - status
+      - verdict
+      - name
+      - knowledge
+      - instruction
+      - discovery
+      - error
+    FriendRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        sender:
+          $ref: '#/components/schemas/User'
+        recipient:
+          $ref: '#/components/schemas/User'
+        status:
+          type: string
+          enum:
+          - pending
+          - accepted
+          - rejected
+          - cancelled
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - sender
+      - recipient
+      - status
+      - created_at
+    Group:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        owner_id:
+          type: string
+          format: uuid
+        member_count:
+          type: integer
+          minimum: 0
+        post_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - name
+      - owner_id
+      - member_count
+      - post_count
+      - created_at
+    Member:
+      type: object
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        role:
+          type: string
+          enum:
+          - owner
+          - member
+        joined_at:
+          type: string
+          format: date-time
+      required:
+      - user
+      - role
+      - joined_at
+    GroupInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        member_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 19
+      required:
+      - name
+      - member_ids
+    Audience:
+      type: object
+      additionalProperties: false
+      properties:
+        friend_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 50
+        group_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 10
+      required:
+      - friend_ids
+      - group_ids
+    PostInput:
+      type: object
+      additionalProperties: false
+      properties:
+        discovery_id:
+          type: string
+          format: uuid
+        caption:
+          type: string
+          maxLength: 500
+        friend_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 50
+        group_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 10
+      required:
+      - discovery_id
+      - caption
+      - friend_ids
+      - group_ids
+      anyOf:
+      - properties:
+          friend_ids:
+            minItems: 1
+      - properties:
+          group_ids:
+            minItems: 1
+    Post:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        discovery_id:
+          type: string
+          format: uuid
+        author:
+          $ref: '#/components/schemas/User'
+        asset_id:
+          type: string
+          format: uuid
+        subject_name:
+          type: string
+        knowledge:
+          type: string
+        caption:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        my_reaction:
+          anyOf:
+          - type: string
+            enum:
+            - heart
+            - clap
+            - wow
+          - type: 'null'
+        reaction_counts:
+          type: object
+          additionalProperties: false
+          properties:
+            heart:
+              type: integer
+              minimum: 0
+            clap:
+              type: integer
+              minimum: 0
+            wow:
+              type: integer
+              minimum: 0
+          required:
+          - heart
+          - clap
+          - wow
+        comment_count:
+          type: integer
+          minimum: 0
+        audience:
+          anyOf:
+          - $ref: '#/components/schemas/Audience'
+          - type: 'null'
+      required:
+      - id
+      - discovery_id
+      - author
+      - asset_id
+      - subject_name
+      - knowledge
+      - caption
+      - created_at
+      - my_reaction
+      - reaction_counts
+      - comment_count
+      - audience
+    Comment:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        post_id:
+          type: string
+          format: uuid
+        author:
+          $ref: '#/components/schemas/User'
+        text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - post_id
+      - author
+      - text
+      - created_at
+    Leaderboard:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              user:
+                $ref: '#/components/schemas/User'
+              rank:
+                type: integer
+                minimum: 1
+            required:
+            - user
+            - rank
+        my_rank:
+          type: integer
+          minimum: 1
+        as_of:
+          type: string
+          format: date-time
+      required:
+      - items
+      - my_rank
+      - as_of
+    Reaction:
+      type: object
+      additionalProperties: false
+      properties:
+        reaction:
+          anyOf:
+          - type: string
+            enum:
+            - heart
+            - clap
+            - wow
+          - type: 'null'
+        counts:
+          type: object
+          additionalProperties: false
+          properties:
+            heart:
+              type: integer
+              minimum: 0
+            clap:
+              type: integer
+              minimum: 0
+            wow:
+              type: integer
+              minimum: 0
+          required:
+          - heart
+          - clap
+          - wow
+      required:
+      - reaction
+      - counts
+    UserPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    EraPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Era'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    DiscoveryPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Discovery'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    FriendRequestPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FriendRequest'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    GroupPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    MemberPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Member'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    PostPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    CommentPage:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Comment'
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    Health:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+        contract_version:
+          type: string
+          const: 1.0.0
+      required:
+      - status
+      - contract_version
+    ErrorDetail:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum:
+          - unauthorized
+          - forbidden
+          - not_found
+          - validation_error
+          - conflict
+          - idempotency_conflict
+          - rate_limited
+          - asset_invalid
+          - mission_inactive
+          - session_closed
+          - provider_failed
+          - deadline_exceeded
+          - internal_error
+        message:
+          type: string
+        retryable:
+          type: boolean
+        request_id:
+          type: string
+          format: uuid
+      required:
+      - code
+      - message
+      - retryable
+      - request_id

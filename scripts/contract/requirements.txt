@@ -1,0 +1,5 @@
+PyYAML==6.0.3
+openapi-spec-validator==0.7.2
+jsonschema>=4.23,<5
+psycopg[binary]>=3.2,<4
+pytest>=8,<10

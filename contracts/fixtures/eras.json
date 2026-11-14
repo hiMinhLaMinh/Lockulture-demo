@@ -1,0 +1,72 @@
+[
+  {
+    "id": "ERA_ANCIENT",
+    "name": "Thời dựng nước",
+    "period": "Văn Lang – Âu Lạc",
+    "sort_order": 1,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_BAC_THUOC",
+    "name": "Thời Bắc thuộc",
+    "period": "Dấu ấn một thời kỳ",
+    "sort_order": 2,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_NGO_DINH_TIEN_LE",
+    "name": "Ngô – Đinh – Tiền Lê",
+    "period": "Buổi đầu tự chủ",
+    "sort_order": 3,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_LY_TRAN",
+    "name": "Lý – Trần",
+    "period": "Thế kỷ XI – XIV",
+    "sort_order": 4,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_LE_SO",
+    "name": "Lê sơ",
+    "period": "Những dấu ấn Đại Việt",
+    "sort_order": 5,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_MAC_LE_TRUNG_HUNG",
+    "name": "Mạc – Lê trung hưng",
+    "period": "Những lớp ký ức",
+    "sort_order": 6,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_TAY_SON",
+    "name": "Tây Sơn",
+    "period": "Dấu ấn Tây Sơn",
+    "sort_order": 7,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_NGUYEN",
+    "name": "Triều Nguyễn",
+    "period": "Thế kỷ XIX – XX",
+    "sort_order": 8,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_MODERN",
+    "name": "Thời cận – hiện đại",
+    "period": "Dấu ấn chuyển mình",
+    "sort_order": 9,
+    "fragment_goal": 3
+  },
+  {
+    "id": "ERA_CONTEMPORARY",
+    "name": "Đương đại",
+    "period": "Việt Nam hôm nay",
+    "sort_order": 10,
+    "fragment_goal": 3
+  }
+]
