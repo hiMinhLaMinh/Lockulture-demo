@@ -9,17 +9,25 @@ from fastapi.responses import JSONResponse
 from .social.core import SocialError, require
 from .social.fixtures import FixtureUrls, load_fixture_services
 from .social.http import router
+from .firestore_repo import load_firebase_social_services
+from .platform_routes import router as platform_router
+from .assets_routes import router as assets_router
 
 
 def create_app(*, social=None):
     fixtures = os.getenv("LOCKULTURE_SOCIAL_FIXTURES") == "1"
+    fixture_services = social is not None or fixtures
     environment = os.getenv("ENV", "production")
     if (fixtures or social is not None) and environment not in {"development", "test"}:
         raise RuntimeError("Social fixtures require ENV=development or ENV=test")
 
     app = FastAPI(title="Lockulture Backend")
-    app.state.social = social if social is not None else load_fixture_services() if fixtures else None
-    if environment in {"development", "test"} and app.state.social:
+    app.state.social = (
+        social if social is not None else
+        load_fixture_services() if fixtures else
+        load_firebase_social_services()
+    )
+    if environment in {"development", "test"}:
         app.add_middleware(
             CORSMiddleware, allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
@@ -58,7 +66,14 @@ def create_app(*, social=None):
             return Response(services.urls.image, media_type="image/svg+xml",
                             headers={"Cache-Control": "no-store"})
 
-    app.include_router(router)
+    if fixture_services:
+        app.include_router(router)
+        app.include_router(platform_router)
+        app.include_router(assets_router)
+    else:
+        app.include_router(assets_router)
+        app.include_router(platform_router)
+        app.include_router(router)
     return app
 
 

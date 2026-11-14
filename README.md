@@ -13,7 +13,11 @@ Bắt đầu tại [docs/README.md](docs/README.md). Bộ tài liệu đã đư�
 - [Kế hoạch tích hợp](docs/integration/PLAN.md)
 - [Hướng dẫn chạy mobile](mobile/README.md)
 
+<<<<<<< HEAD
 Frontend React Native/Expo đã có Missions, Capture, Friends/Groups, chia sẻ chọn người nhận, cảm xúc/bình luận và leaderboard bằng mock local. Một số trang auth/chi tiết vẫn scaffold. Backend FastAPI đã có verification gọi Gemini từ main; các luồng khác còn mẫu, chưa Maps/auth/đồng bộ nhiều tài khoản. React Native chưa nối API này; xem docs/integration/UPSTREAM_MERGE.md.
+=======
+Frontend chính là React Native/Expo. Working tree hiện có luồng Firebase Auth email/password, API client gửi Firebase ID token và backend FastAPI có Firebase Admin/Firestore services cùng social API. Chưa có bằng chứng Emulator/staging cho toàn bộ nghiệp vụ; upload ảnh đang dùng local volume chỉ trong dev vì project hiện chưa có Storage bucket.
+>>>>>>> ee57e4c (Khởi tạo tài khoản của firebase và cơ sở hạ tầngd dể kết nối tới firebase)
 
 ## Chạy scaffold hiện tại
 
@@ -25,7 +29,7 @@ docker compose up --build -d
 docker compose logs -f backend
 ```
 
-`.env` là cấu hình cục bộ, không commit khóa API. Backend local: [Swagger](http://localhost:8080/docs), [health](http://localhost:8080/health). Swagger mô tả route đang chạy, chưa phải API mục tiêu trong tài liệu.
+`.env` là cấu hình cục bộ, không commit khóa API hoặc service-account key. Tạo `backend/.env` từ `backend/.env.example`; đặt service account tại `backend/service-account.json`. Backend local: [Swagger](http://localhost:8080/docs), [health](http://localhost:8080/health). Firebase-backed routes yêu cầu tài khoản email đã xác minh.
 
 ```bash
 cd mobile

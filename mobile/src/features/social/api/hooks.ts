@@ -4,11 +4,13 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { z } from 'zod';
 import { ApiError } from '@/services/api/client';
 import { pageSchema, socialRequest } from '@/services/api/social';
-import { tokenFor, useFixtureSession } from './session';
+import { currentActor, tokenFor, useFirebaseSession, useFixtureSession } from './session';
 
 function useActor() {
-  const actor = useFixtureSession((s) => s.actor);
-  return { actor, token: actor ? tokenFor(actor) : '' };
+  const fixture = useFixtureSession((s) => s.actor);
+  const user = useFirebaseSession((s) => s.user);
+  const actor = fixture ?? (user?.emailVerified ? user.uid : null);
+  return { actor, token: fixture ? tokenFor(fixture) : undefined };
 }
 
 function retry(failures: number, error: Error) {
@@ -49,7 +51,7 @@ export function useSocialPage<T>(path: string, item: z.ZodType<T>, enabled = tru
 export function useRefreshOnFocus(refetch: () => Promise<unknown>) {
   useFocusEffect(
     useCallback(() => {
-      if (useFixtureSession.getState().actor) void refetch();
+      if (currentActor()) void refetch();
     }, [refetch]),
   );
 }
@@ -107,7 +109,7 @@ export function useSocialMutation() {
     try {
       setRepeat(null);
       const value = await mutation.mutateAsync(command);
-      if (useFixtureSession.getState().actor === actor) onSuccess?.(command.schema.parse(value));
+      if (currentActor() === actor) onSuccess?.(command.schema.parse(value));
     } catch (error) {
       if (!(error instanceof ApiError) || error.status >= 500 || error.retryable) {
         setRepeat(() => () => send(command, onSuccess));

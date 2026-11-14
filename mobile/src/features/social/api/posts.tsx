@@ -25,7 +25,7 @@ import { Confirm, Person, socialStyles } from '@/features/social/ui';
 import { MutationFeedback, PageControls, QueryView, Selection } from './components';
 import { useRefreshOnFocus, useSocialMutation, useSocialPage, useSocialQuery } from './hooks';
 import { useRouteId } from './account';
-import { useFixtureSession } from './session';
+import { useFirebaseSession, useFixtureSession } from './session';
 
 type Post = z.infer<typeof post>;
 const reactions = { heart: '❤️', clap: '👏', wow: '😮' };
@@ -461,7 +461,9 @@ function AuthorActions({ row }: { row: Post }) {
 
 export function ApiPostDetail() {
   const id = useRouteId();
-  const actor = useFixtureSession((s) => s.actor);
+  const fixture = useFixtureSession((s) => s.actor);
+  const firebaseUser = useFirebaseSession((s) => s.user);
+  const actor = fixture ?? (firebaseUser?.emailVerified ? firebaseUser.uid : null);
   const client = useQueryClient();
   const query = useSocialQuery(`/posts/${id}`, post);
   useRefreshOnFocus(query.refetch);

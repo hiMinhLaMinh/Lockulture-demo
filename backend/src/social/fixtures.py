@@ -66,7 +66,7 @@ class FixtureUrls:
 
 
 def load_fixture_services():
-    identities = json.loads((CONTRACTS / "fixtures/identities.json").read_text())
+    identities = json.loads((CONTRACTS / "fixtures/identities.json").read_text(encoding='utf-8'))
     users = identities["users"]
     group = identities["group"]
     owner = users[group["owner"]]["id"]
@@ -80,6 +80,6 @@ def load_fixture_services():
         "created_at": "2026-11-11T00:00:00Z", "deleted": False,
         "members": {users[name]["id"]: membership(joined) for name in group["members"]},
     }
-    discovery = json.loads((CONTRACTS / "examples/discovery.json").read_text())["data"]
+    discovery = json.loads((CONTRACTS / "examples/discovery.json").read_text(encoding='utf-8'))["data"]
     return SocialServices(FixtureActors(users), MemoryRepository(seed),
                           FixtureDiscoveries([discovery]), FixtureUrls())

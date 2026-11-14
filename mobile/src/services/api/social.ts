@@ -83,7 +83,7 @@ export function pageSchema<T>(item: z.ZodType<T>) {
 }
 
 export async function socialRequest<T>(
-  token: string,
+  token: string | undefined,
   path: string,
   schema: z.ZodType<T>,
   options?: RequestInit,

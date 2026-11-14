@@ -1,5 +1,13 @@
 import { env } from '@/config/env';
 
+async function firebaseSession() {
+  if (env.dataSource !== 'api') return undefined;
+  const { auth } = await import('@/config/firebase-auth');
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) return undefined;
+  return { token: await user.getIdToken(), uid: user.uid };
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -19,14 +27,16 @@ export async function requestJson<T>(
 ): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set('Accept', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const firebase = token ? undefined : await firebaseSession();
+  const activeToken = token ?? firebase?.token;
+  if (activeToken) headers.set('Authorization', `Bearer ${activeToken}`);
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (options.signal?.aborted) abort();
   options.signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(abort, 15000);
   try {
-    const response = await fetch(
+    let response = await fetch(
       `${env.apiBaseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`,
       {
         ...options,
@@ -34,6 +44,17 @@ export async function requestJson<T>(
         signal: controller.signal,
       },
     );
+    if (response.status === 401 && firebase) {
+      const { auth } = await import('@/config/firebase-auth');
+      const user = auth.currentUser;
+      if (user?.emailVerified && user.uid === firebase.uid) {
+        headers.set('Authorization', `Bearer ${await user.getIdToken(true)}`);
+        response = await fetch(
+          `${env.apiBaseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`,
+          { ...options, headers, signal: controller.signal },
+        );
+      }
+    }
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
       const error = payload?.error;

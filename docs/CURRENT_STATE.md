@@ -1,4 +1,4 @@
-# Hiện trạng code — 12/11/2026
+# Hiện trạng code — 13/11/2026
 
 [Chỉ mục](README.md) · [Bàn giao Giai đoạn A](implementation/PHASE_A_HANDOFF.md)
 
@@ -70,4 +70,16 @@ Draft capture và continuation không phải toàn bộ đều được persist;
 
 ## Bộ đầu vào triển khai mới (11/11/2026)
 
+<<<<<<< HEAD
 Thiết kế mới dùng Firebase Auth/Firestore/Cloud Storage; xem [implementation](implementation/README.md). Runtime frontend/backend chưa chuyển provider trong đợt cập nhật tài liệu. Tests SQL cũ được lưu lịch sử, chưa có bằng chứng Emulator/staging Firebase pass.
+=======
+Thiết kế mới dùng Firebase Auth/Firestore/Cloud Storage; xem [implementation](implementation/README.md). Trạng thái runtime hiện tại bên dưới là cấu hình local chưa có bằng chứng Emulator/staging.
+
+## Cập nhật tích hợp Firebase local
+
+- Mobile API mode có đăng ký/đăng nhập Email/Password, xác minh email, đặt lại mật khẩu, persistence native, sign-out và tự gửi Firebase ID token tới FastAPI; cấu hình công khai lấy từ `mobile/.env`.
+- Backend khởi tạo Firebase Admin từ `FIREBASE_PROJECT_ID` và credentials, tạo `auth_identities`/`profiles` khi gọi `GET /api/v1/me`, xác minh ID token và dùng Firestore repository cho social API. Route Firebase `/me` được ưu tiên khi không chạy fixture.
+- Compose mount `backend/service-account.json` chỉ đọc; Docker build loại file khóa và `.env`. Hai file không được commit.
+- Project hiện chưa có Storage bucket. Upload local dùng volume `uploads_data`, chỉ cho development/test; không phù hợp production/Cloud Run.
+- Đã kiểm tra typecheck/lint, web export và backend tests (26 passed, 5 Emulator tests skipped); contract validator pass. Local API smoke test trả `200` cho `/health`, `401` khi gọi `/api/v1/me` không có token. Firebase Admin đọc được Firestore bằng credential cấu hình; truy vấn root collections hiện trả 0. Chưa xác thực login thật hoặc ghi dữ liệu nghiệp vụ lên project; Docker CLI không có trong máy kiểm tra. Python cục bộ là 3.10, trong khi Firebase SDK cảnh báo nên dùng Python 3.11+.
+>>>>>>> ee57e4c (Khởi tạo tài khoản của firebase và cơ sở hạ tầngd dể kết nối tới firebase)

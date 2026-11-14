@@ -125,7 +125,8 @@ def page(rows, limit, cursor, scope, key, *, descending=False):
             require(stored_scope == scope_hash and isinstance(sort_value, str), 422, "Invalid cursor scope")
             require(str(UUID(item_id)) == item_id, 422, "Invalid cursor ID")
             if descending:
-                require(timestamp(datetime.fromisoformat(sort_value)) == sort_value, 422, "Invalid cursor date")
+                parsed_date = sort_value.replace("Z", "+00:00")
+                require(timestamp(datetime.fromisoformat(parsed_date)) == sort_value, 422, "Invalid cursor date")
             boundary = (sort_value, item_id)
         except (ValueError, TypeError, AttributeError, binascii.Error) as error:
             raise SocialError(422, "Invalid cursor") from error
@@ -148,7 +149,8 @@ def user_key(row):
 
 
 def created_key(row):
-    return timestamp(datetime.fromisoformat(row["created_at"])), row["id"]
+    value = row["created_at"].replace("Z", "+00:00")
+    return timestamp(datetime.fromisoformat(value)), row["id"]
 
 
 def mutate(repository, actor, operation_id, key, path, body, status, operation, clock=now):
